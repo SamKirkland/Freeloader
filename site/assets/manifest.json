@@ -1,0 +1,138 @@
+{
+  "generatedAt": "2026-09-22T08:05:11.701Z",
+  "totalBytes": 51658342,
+  "files": [
+    {
+      "path": "assets/generated/clip-1080p.mp4",
+      "bytes": 16385184,
+      "type": "video/mp4",
+      "compressible": false
+    },
+    {
+      "path": "assets/generated/clip-720p.mp4",
+      "bytes": 7831062,
+      "type": "video/mp4",
+      "compressible": false
+    },
+    {
+      "path": "assets/generated/gallery-01.jpg",
+      "bytes": 148150,
+      "type": "image/jpeg",
+      "compressible": false
+    },
+    {
+      "path": "assets/generated/gallery-02.jpg",
+      "bytes": 279550,
+      "type": "image/jpeg",
+      "compressible": false
+    },
+    {
+      "path": "assets/generated/gallery-03.jpg",
+      "bytes": 1526026,
+      "type": "image/jpeg",
+      "compressible": false
+    },
+    {
+      "path": "assets/generated/gallery-04.jpg",
+      "bytes": 1526563,
+      "type": "image/jpeg",
+      "compressible": false
+    },
+    {
+      "path": "assets/generated/gallery-05.jpg",
+      "bytes": 189435,
+      "type": "image/jpeg",
+      "compressible": false
+    },
+    {
+      "path": "assets/generated/gallery-06.jpg",
+      "bytes": 432786,
+      "type": "image/jpeg",
+      "compressible": false
+    },
+    {
+      "path": "assets/generated/gallery-07.jpg",
+      "bytes": 36970,
+      "type": "image/jpeg",
+      "compressible": false
+    },
+    {
+      "path": "assets/generated/gallery-08.jpg",
+      "bytes": 2259387,
+      "type": "image/jpeg",
+      "compressible": false
+    },
+    {
+      "path": "assets/generated/gallery-09.jpg",
+      "bytes": 61381,
+      "type": "image/jpeg",
+      "compressible": false
+    },
+    {
+      "path": "assets/generated/gallery-10.jpg",
+      "bytes": 186024,
+      "type": "image/jpeg",
+      "compressible": false
+    },
+    {
+      "path": "assets/generated/gallery-11.jpg",
+      "bytes": 1029099,
+      "type": "image/jpeg",
+      "compressible": false
+    },
+    {
+      "path": "assets/generated/gallery-12.jpg",
+      "bytes": 59602,
+      "type": "image/jpeg",
+      "compressible": false
+    },
+    {
+      "path": "assets/generated/hero.jpg",
+      "bytes": 361640,
+      "type": "image/jpeg",
+      "compressible": false
+    },
+    {
+      "path": "assets/generated/loop-480p.webm",
+      "bytes": 17787654,
+      "type": "video/webm",
+      "compressible": false
+    },
+    {
+      "path": "assets/generated/thumb-a.jpg",
+      "bytes": 16430,
+      "type": "image/jpeg",
+      "compressible": false
+    },
+    {
+      "path": "assets/generated/thumb-b.jpg",
+      "bytes": 36663,
+      "type": "image/jpeg",
+      "compressible": false
+    },
+    {
+      "path": "assets/generated/thumb-c.jpg",
+      "bytes": 4575,
+      "type": "image/jpeg",
+      "compressible": false
+    },
+    {
+      "path": "assets/generated/vendor-charts.js",
+      "bytes": 420016,
+      "type": "text/javascript",
+      "compressible": true
+    },
+    {
+      "path": "assets/generated/vendor-editor.js",
+      "bytes": 900043,
+      "type": "text/javascript",
+      "compressible": true
+    },
+    {
+      "path": "assets/generated/vendor-icons.js",
+      "bytes": 180102,
+      "type": "text/javascript",
+      "compressible": true
+    }
+  ]
+}

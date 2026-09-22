@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>About — Freeloader demo</title>
+    <link rel="stylesheet" href="css/site.css" />
+    <script type="module" src="js/boot.js"></script>
+  </head>
+  <body>
+    <header class="site">
+      <div class="inner">
+        <a class="brand" href="index.html">free<span>loader</span></a>
+        <nav class="site">
+          <a href="index.html">Home</a>
+          <a href="gallery.html">Gallery</a>
+          <a href="media.html">Media</a>
+          <a href="app.html">Dashboard</a>
+          <a href="about.html">About</a>
+          <a href="usage.html">Usage</a>
+          <a href="network.html">Network</a>
+          <a href="speedtest.html">Speed test</a>
+          <a href="debug.html">Debug</a>
+        </nav>
+      </div>
+    </header>
+
+    <div class="metrics" id="freeloader-metrics">
+      <div class="metric">
+        <div class="label">Average download</div>
+        <div class="value" data-metric="download-average">—</div>
+        <div class="sub" data-metric="download-average-detail">&nbsp;</div>
+      </div>
+      <div class="metric">
+        <div class="label">Peak download</div>
+        <div class="value" data-metric="download-peak">—</div>
+        <div class="sub" data-metric="download-peak-detail">&nbsp;</div>
+      </div>
+      <div class="metric">
+        <div class="label">Average upload</div>
+        <div class="value" data-metric="upload-average">—</div>
+        <div class="sub" data-metric="upload-average-detail">&nbsp;</div>
+      </div>
+      <div class="metric">
+        <div class="label">Peak upload</div>
+        <div class="value" data-metric="upload-peak">—</div>
+        <div class="sub" data-metric="upload-peak-detail">&nbsp;</div>
+      </div>
+      <div class="metric">
+        <div class="label">Latency</div>
+        <div class="value" data-metric="round-trip">—</div>
+        <div class="sub" data-metric="round-trip-detail">&nbsp;</div>
+      </div>
+    </div>
+
+    <main>
+      <h1>About this demo</h1>
+      <img
+        src="assets/generated/thumb-a.jpg"
+        alt="Small generated test pattern"
+        width="600"
+        height="400"
+        style="border-radius: 10px; max-width: 320px; height: auto"
+      />
+
+      <h2>What gets measured</h2>
+      <div class="grid cols-2">
+        <div class="card">
+          <h3>Download</h3>
+          <p class="small">
+            From Resource Timing. Transfers that overlap in time are merged into a burst, and the
+            burst's bytes are divided by the wall time it occupied. Cache hits and cross-origin
+            responses without <code>Timing-Allow-Origin</code> report zero bytes and are skipped.
+          </p>
+        </div>
+        <div class="card">
+          <h3>Upload</h3>
+          <p class="small">
+            From <code>XMLHttpRequest</code> upload progress events, which mark exactly when a
+            request body finished going out, and from <code>fetch</code> timings with one round trip
+            subtracted. Only body sizes are read — never body contents.
+          </p>
+        </div>
+        <div class="card">
+          <h3>Latency and jitter</h3>
+          <p class="small">
+            Round trip is the minimum time to first byte across recent requests, or half the
+            shortest TCP+TLS handshake when one was measured. Jitter is the mean absolute deviation
+            of time to first byte around its median.
+          </p>
+        </div>
+        <div class="card">
+          <h3>Confidence</h3>
+          <p class="small">
+            Rises with sample count, total bytes observed and agreement between samples. A page like
+            this one moves too few bytes to say anything, so confidence stays low rather than the
+            number being wrong.
+          </p>
+        </div>
+      </div>
+
+      <h2>What it cannot do</h2>
+      <ul>
+        <li>
+          It cannot exceed what the site itself transfers. On a 1 Gbps link, a page that only ever
+          moves 40 KB assets will read low — the link was never asked for more.
+        </li>
+        <li>
+          The first page view on a very fast link tends to read low, because new connections spend
+          their first few round trips ramping up. It corrects for this, but only within reason.
+        </li>
+        <li>
+          Cross-origin assets are invisible unless the other origin sends
+          <code>Timing-Allow-Origin</code>. Your own CDN can; someone else's usually will not.
+        </li>
+        <li>
+          Upload numbers need actual uploads. A site that never sends a body will never have one.
+        </li>
+      </ul>
+
+      <h2>Privacy</h2>
+      <p>
+        Everything stays in the browser. The library makes no requests of its own, sends nothing
+        anywhere, and keeps its state in <code>localStorage</code> under a single key. It reads the
+        sizes and timings of transfers the page already made, never their contents.
+      </p>
+    </main>
+
+  </body>
+</html>

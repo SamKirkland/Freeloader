@@ -1,0 +1,298 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Network — Freeloader demo</title>
+    <link rel="stylesheet" href="css/site.css" />
+    <script type="module" src="js/boot.js"></script>
+  </head>
+  <body>
+    <header class="site">
+      <div class="inner">
+        <a class="brand" href="index.html">free<span>loader</span></a>
+        <nav class="site">
+          <a href="index.html">Home</a>
+          <a href="gallery.html">Gallery</a>
+          <a href="media.html">Media</a>
+          <a href="app.html">Dashboard</a>
+          <a href="about.html">About</a>
+          <a href="usage.html">Usage</a>
+          <a href="network.html">Network</a>
+          <a href="speedtest.html">Speed test</a>
+          <a href="debug.html">Debug</a>
+        </nav>
+      </div>
+    </header>
+
+    <div class="metrics" id="freeloader-metrics">
+      <div class="metric">
+        <div class="label">Average download</div>
+        <div class="value" data-metric="download-average">—</div>
+        <div class="sub" data-metric="download-average-detail">&nbsp;</div>
+      </div>
+      <div class="metric">
+        <div class="label">Peak download</div>
+        <div class="value" data-metric="download-peak">—</div>
+        <div class="sub" data-metric="download-peak-detail">&nbsp;</div>
+      </div>
+      <div class="metric">
+        <div class="label">Average upload</div>
+        <div class="value" data-metric="upload-average">—</div>
+        <div class="sub" data-metric="upload-average-detail">&nbsp;</div>
+      </div>
+      <div class="metric">
+        <div class="label">Peak upload</div>
+        <div class="value" data-metric="upload-peak">—</div>
+        <div class="sub" data-metric="upload-peak-detail">&nbsp;</div>
+      </div>
+      <div class="metric">
+        <div class="label">Latency</div>
+        <div class="value" data-metric="round-trip">—</div>
+        <div class="sub" data-metric="round-trip-detail">&nbsp;</div>
+      </div>
+    </div>
+
+    <main>
+      <h1>Network diagnostics</h1>
+      <div id="verdict" class="card" style="margin-bottom: 20px; display: none"></div>
+
+      <h2>Detail</h2>
+      <div class="scroll">
+        <table>
+          <tbody id="detail"></tbody>
+        </table>
+      </div>
+
+      <h2>Recent samples</h2>
+      <div class="scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>Source</th>
+              <th class="num">Bytes</th>
+              <th class="num">Duration</th>
+              <th class="num">Parallel</th>
+              <th class="num">Fresh</th>
+              <th class="num">Rate</th>
+            </tr>
+          </thead>
+          <tbody id="samples">
+            <tr><td colspan="6" class="muted small">—</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h2>Entries the library ignored</h2>
+      <div class="scroll">
+        <table>
+          <thead>
+            <tr><th>Reason</th><th class="num">Count</th><th>Why</th></tr>
+          </thead>
+          <tbody id="skipped">
+            <tr><td colspan="3" class="muted small">—</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h2>Stored state</h2>
+      <div class="row" style="margin-bottom: 10px">
+        <button id="reset">Reset the estimate</button>
+        <button id="refresh">Refresh this view</button>
+        <span class="small muted" id="storage-size"></span>
+      </div>
+      <pre id="storage" class="small">—</pre>
+    </main>
+
+
+    <script type="module">
+      import { formatBitsPerSecond, formatBytes, formatMilliseconds } from "./freeloader.js";
+      import { loadResult } from "./js/speedtest.js";
+
+      const SKIP_REASONS = {
+        "cache-hit": "Served from the browser cache; no bytes crossed the network.",
+        "no-transfer-size": "Zero transferred bytes: a cache hit, or cross-origin without Timing-Allow-Origin.",
+        "opaque-timings": "Cross-origin response that hid its detailed timestamps.",
+        "window-too-short": "Finished too fast to time reliably; kept for latency only.",
+        "foreign-origin": "Not one of the origins this instance was told to watch.",
+      };
+
+      /**
+       * The truth to grade the estimate against: whatever the active speed test
+       * last measured, read from localStorage. So this page still issues nothing
+       * of its own, which matters on a page whose subject is not issuing
+       * requests.
+       */
+      const measured = loadResult();
+
+      /**
+       * No throttled dev server, so grade against whatever the active speed test
+       * last measured. It is a weaker check than a configured rate — the test is
+       * itself a measurement — but it is a real one, taken over the same path.
+       */
+      function renderAgainstSpeedTest(box, estimate) {
+        const truthBps = measured?.download?.averageBitsPerSecond;
+        if (!truthBps) {
+          box.style.display = "block";
+          box.innerHTML = `
+            <div class="small muted">
+              Run the <a href="speedtest.html">speed test</a> to grade these numbers.
+            </div>
+          `;
+          return;
+        }
+
+        // Grade what the cards show, and prefer the snapshot the test could not
+        // have influenced.
+        const passiveBps = measured.passiveBefore?.download?.averageBitsPerSecond ?? estimate.download.averageBitsPerSecond;
+        const independent = Boolean(measured.passiveBefore?.download?.averageBitsPerSecond);
+        if (!passiveBps) {
+          box.style.display = "none";
+          return;
+        }
+        const error = ((passiveBps - truthBps) / truthBps) * 100;
+        const magnitude = Math.abs(error);
+        const grade = magnitude <= 10 ? "good" : magnitude <= 25 ? "warn" : "bad";
+        const ageMinutes = Math.round((Date.now() - measured.download.at) / 60000);
+
+        box.style.display = "block";
+        box.innerHTML = `
+          <div class="label muted small">Average download, measured against an active speed test</div>
+          <div style="font-size: 1.3rem; font-weight: 650">
+            ${formatBitsPerSecond(passiveBps)} passive vs ${formatBitsPerSecond(truthBps)} measured
+            <span class="tag ${grade}">${error >= 0 ? "+" : ""}${error.toFixed(1)}%</span>
+          </div>
+          <div class="small muted">
+            ${
+              independent
+                ? "Snapshotted before the test ran"
+                : "No pre-test snapshot; this is the current estimate, which has seen the test's traffic"
+            } · ${measured.download.streams} streams ·
+            ${formatBytes(measured.download.bodyBytes)} ·
+            ${ageMinutes === 0 ? "just now" : `${ageMinutes} min ago`}
+          </div>
+          ${
+            measured.download.budgetLimited
+              ? `<div class="small muted">
+                   That run hit its data cap before a full window had formed, so the measured
+                   figure is a floor on the link. The error above is an upper bound on how far
+                   the estimate is off.
+                 </div>`
+              : ""
+          }
+          <div class="small muted">
+            Round trip ${formatMilliseconds(estimate.latency.roundTripMilliseconds)} vs ${formatMilliseconds(measured.latency?.roundTripMilliseconds)} ·
+            jitter ${formatMilliseconds(estimate.latency.jitterMilliseconds)} vs ${formatMilliseconds(measured.latency?.jitterMilliseconds)}
+          </div>
+        `;
+      }
+
+      function renderVerdict(estimate) {
+        const box = document.getElementById("verdict");
+        if (!estimate?.download.averageBitsPerSecond) {
+          box.style.display = "none";
+          return;
+        }
+        renderAgainstSpeedTest(box, estimate);
+      }
+
+      function render(estimate) {
+        if (!estimate) return;
+        const debug = window.freeloader.debug();
+
+        const detail = document.getElementById("detail");
+        const rows = [
+          ["Download estimate", formatBitsPerSecond(estimate.download.bitsPerSecond)],
+          ["Download resources", String(estimate.download.resources)],
+          ["Peak sustained burst", formatBitsPerSecond(estimate.download.peakBitsPerSecond)],
+          ["Regression estimate", formatBitsPerSecond(estimate.download.regressionBitsPerSecond)],
+          ["Download spread", estimate.download.confidence.spread.toFixed(2)],
+          ["Upload estimate", formatBitsPerSecond(estimate.upload.bitsPerSecond)],
+          ["Upload peak", formatBitsPerSecond(estimate.upload.peakBitsPerSecond)],
+          ["Upload resources", String(estimate.upload.resources)],
+          ["Bytes observed", `${formatBytes(debug.totals.downloadBytes)} down · ${formatBytes(debug.totals.uploadBytes)} up`],
+          ["Round trip", formatMilliseconds(estimate.latency.roundTripMilliseconds)],
+          ["Jitter", formatMilliseconds(estimate.latency.jitterMilliseconds)],
+          ["Latency resources", String(estimate.latency.resources)],
+          ["Samples settled / still revisable", `${debug.downloadSamples} / ${debug.liveDownloadSamples}`],
+          [
+            "Latency samples taken while the link was busy",
+            `${debug.contendedLatency} of ${debug.latencySamples} (excluded from jitter)`,
+          ],
+          ["Transfer windows buffered", String(debug.pendingWindows)],
+          ["Updated", new Date(estimate.updatedAt).toLocaleTimeString()],
+        ];
+        detail.replaceChildren(
+          ...rows.map(([label, value]) => {
+            const tr = document.createElement("tr");
+            tr.innerHTML = `<td class="muted">${label}</td><td class="num">${value}</td>`;
+            return tr;
+          }),
+        );
+
+        const samples = document.getElementById("samples");
+        if (debug.lastSamples.length > 0) {
+          samples.replaceChildren(
+            ...debug.lastSamples
+              .slice()
+              .reverse()
+              .map((sample) => {
+                const tr = document.createElement("tr");
+                tr.innerHTML = `
+                  <td><span class="tag">${sample.source}</span></td>
+                  <td class="num">${formatBytes(sample.bytes)}</td>
+                  <td class="num">${formatMilliseconds(sample.durationMilliseconds)}</td>
+                  <td class="num">${sample.concurrency.toFixed(1)}×</td>
+                  <td class="num">${Math.round((sample.freshFraction ?? 0) * 100)}%</td>
+                  <td class="num">${formatBitsPerSecond(sample.bitsPerSecond)}</td>
+                `;
+                return tr;
+              }),
+          );
+        }
+
+        const skipped = document.getElementById("skipped");
+        const entries = Object.entries(debug.skipped);
+        if (entries.length > 0) {
+          skipped.replaceChildren(
+            ...entries.map(([reason, count]) => {
+              const tr = document.createElement("tr");
+              tr.innerHTML = `
+                <td><code>${reason}</code></td>
+                <td class="num">${count}</td>
+                <td class="small muted">${SKIP_REASONS[reason] ?? ""}</td>
+              `;
+              return tr;
+            }),
+          );
+        }
+
+        const raw = localStorage.getItem("freeloader:demo");
+        document.getElementById("storage").textContent = raw
+          ? JSON.stringify(JSON.parse(raw), null, 2).slice(0, 4000)
+          : "(nothing stored)";
+        document.getElementById("storage-size").textContent = raw
+          ? `${formatBytes(new Blob([raw]).size)} in localStorage`
+          : "";
+
+        renderVerdict(estimate);
+      }
+
+      document.getElementById("reset").addEventListener("click", () => {
+        window.freeloader.reset();
+        render(window.freeloader.getEstimate());
+      });
+      document.getElementById("refresh").addEventListener("click", () => {
+        window.freeloader.flush();
+        render(window.freeloader.getEstimate());
+      });
+
+      const start = () => {
+        if (!window.freeloader) return void setTimeout(start, 50);
+        render(window.freeloader.getEstimate());
+        window.freeloader.subscribe(render);
+      };
+      start();
+    </script>
+  </body>
+</html>

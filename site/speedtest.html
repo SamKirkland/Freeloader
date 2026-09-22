@@ -1,0 +1,481 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Speed test — Freeloader demo</title>
+    <link rel="stylesheet" href="css/site.css" />
+    <script type="module" src="js/boot.js"></script>
+  </head>
+  <body>
+    <header class="site">
+      <div class="inner">
+        <a class="brand" href="index.html">free<span>loader</span></a>
+        <nav class="site">
+          <a href="index.html">Home</a>
+          <a href="gallery.html">Gallery</a>
+          <a href="media.html">Media</a>
+          <a href="app.html">Dashboard</a>
+          <a href="about.html">About</a>
+          <a href="usage.html">Usage</a>
+          <a href="network.html">Network</a>
+          <a href="speedtest.html">Speed test</a>
+          <a href="debug.html">Debug</a>
+        </nav>
+      </div>
+    </header>
+
+    <div class="metrics" id="freeloader-metrics">
+      <div class="metric">
+        <div class="label">Average download</div>
+        <div class="value" data-metric="download-average">—</div>
+        <div class="sub" data-metric="download-average-detail">&nbsp;</div>
+      </div>
+      <div class="metric">
+        <div class="label">Peak download</div>
+        <div class="value" data-metric="download-peak">—</div>
+        <div class="sub" data-metric="download-peak-detail">&nbsp;</div>
+      </div>
+      <div class="metric">
+        <div class="label">Average upload</div>
+        <div class="value" data-metric="upload-average">—</div>
+        <div class="sub" data-metric="upload-average-detail">&nbsp;</div>
+      </div>
+      <div class="metric">
+        <div class="label">Peak upload</div>
+        <div class="value" data-metric="upload-peak">—</div>
+        <div class="sub" data-metric="upload-peak-detail">&nbsp;</div>
+      </div>
+      <div class="metric">
+        <div class="label">Latency</div>
+        <div class="value" data-metric="round-trip">—</div>
+        <div class="sub" data-metric="round-trip-detail">&nbsp;</div>
+      </div>
+    </div>
+
+    <main>
+      <h1>Speed test</h1>
+      <p class="lede">Pulls real files off this server and times them.</p>
+
+      <div class="card" style="margin-bottom: 20px">
+        <div class="row" style="justify-content: space-between">
+          <div class="row">
+            <button id="run" class="primary">Run the test</button>
+            <label class="small muted">
+              for up to
+              <select id="duration">
+                <option value="5000">5 s</option>
+                <option value="10000" selected>10 s</option>
+                <option value="20000">20 s</option>
+              </select>
+            </label>
+            <label class="small muted">
+              using at most
+              <select id="cap">
+                <option value="50000000">50 MB</option>
+                <option value="150000000">150 MB</option>
+                <option value="500000000" selected>500 MB</option>
+                <option value="1500000000">1.5 GB</option>
+                <option value="0">no cap</option>
+              </select>
+            </label>
+            <label class="small muted">
+              over
+              <select id="streams">
+                <option value="1">1 stream</option>
+                <option value="4">4 streams</option>
+                <option value="6" selected>6 streams</option>
+                <option value="8">8 streams</option>
+              </select>
+            </label>
+          </div>
+          <span class="small muted" id="budget">reading the asset manifest…</span>
+        </div>
+        <div class="meter" style="margin-top: 12px"><span id="progress"></span></div>
+        <div class="small muted" id="status" style="margin-top: 8px">&nbsp;</div>
+      </div>
+
+      <h2>Measured</h2>
+      <div class="metrics wide" style="padding-left: 0; padding-right: 0">
+        <div class="metric">
+          <div class="label">Average download</div>
+          <div class="value" data-t="down-avg">—</div>
+          <div class="sub" data-t="down-avg-sub">&nbsp;</div>
+        </div>
+        <div class="metric">
+          <div class="label">Peak download</div>
+          <div class="value" data-t="down-peak">—</div>
+          <div class="sub" data-t="down-peak-sub">&nbsp;</div>
+        </div>
+        <div class="metric">
+          <div class="label">Average upload</div>
+          <div class="value" data-t="up-avg">—</div>
+          <div class="sub" data-t="up-avg-sub">&nbsp;</div>
+        </div>
+        <div class="metric">
+          <div class="label">Peak upload</div>
+          <div class="value" data-t="up-peak">—</div>
+          <div class="sub" data-t="up-peak-sub">&nbsp;</div>
+        </div>
+        <div class="metric">
+          <div class="label">Latency</div>
+          <div class="value" data-t="rtt">—</div>
+          <div class="sub" data-t="rtt-sub">&nbsp;</div>
+        </div>
+        <div class="metric">
+          <div class="label">Data used</div>
+          <div class="value" data-t="used">—</div>
+          <div class="sub" data-t="used-sub">&nbsp;</div>
+        </div>
+      </div>
+
+      <h2>Passive estimate vs measured</h2>
+      <div id="verdict" class="card">
+        <p class="small muted" style="margin: 0">
+          The passive estimate is snapshotted when the test starts, before the test's own traffic
+          can teach it anything.
+        </p>
+      </div>
+
+      <h2>Detail</h2>
+      <div class="scroll">
+        <table>
+          <tbody id="detail">
+            <tr><td colspan="2" class="muted small">no run yet</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p class="small muted">
+        Incompressible files only — a CDN gzips text, and the reader would count bytes that never
+        crossed the wire. Measures the path to the nearest edge, not your line. Uploads are posted to
+        a static path and refused; only the ones whose body finished are counted, and a host that
+        refuses part way through yields no figure rather than a wrong one.
+      </p>
+
+      <p class="small muted">
+        The duration is a ceiling, not a length: each direction stops as soon as the last second
+        only repeats what the run has already said, which on a quick link is a second or two rather
+        than ten. What that cannot get around is arithmetic — a second of a 2.5 Gbps link is 300 MB,
+        so measuring one honestly costs that. The cap is the ceiling on what the whole test may
+        spend; when it bites before a full window has formed, the figures are marked as a floor on
+        the link rather than a measure of it.
+      </p>
+    </main>
+
+
+    <script type="module">
+      import { formatBitsPerSecond, formatBytes, formatMilliseconds } from "./freeloader.js";
+      import {
+        downloadFiles,
+        latencyFile,
+        loadManifest,
+        runDownloadTest,
+        runLatencyTest,
+        runUploadTest,
+        saveResult,
+      } from "./js/speedtest.js";
+
+      const text = (key, value) => {
+        const node = document.querySelector(`[data-t="${key}"]`);
+        if (node) node.textContent = value;
+      };
+      const status = document.getElementById("status");
+      const progress = document.getElementById("progress");
+
+      /** Why a run ended, in the words that say what it means for the number. */
+      function stopNote(run) {
+        if (run.budgetLimited) return "hit the cap early — read as a floor";
+        if (run.stopReason === "settled") return "settled";
+        if (run.stopReason === "budget") return "hit the cap";
+        return "ran out of clock";
+      }
+
+      function budgetNote(run, spent) {
+        if (!Number.isFinite(run.budgetBytes)) return `${formatBytes(spent)} · no cap`;
+        return `${formatBytes(spent)} of ${formatBytes(run.budgetBytes)}`;
+      }
+
+      let files = [];
+      let smallest = null;
+
+      loadManifest()
+        .then((manifest) => {
+          files = downloadFiles(manifest);
+          smallest = latencyFile(manifest);
+          const bytes = files.reduce((sum, file) => sum + file.bytes, 0);
+          document.getElementById("budget").textContent =
+            `${files.length} files · ${formatBytes(bytes)} per pass`;
+        })
+        .catch((error) => {
+          document.getElementById("budget").textContent = `manifest missing: ${error.message}`;
+          document.getElementById("run").disabled = true;
+          status.textContent =
+            "assets/manifest.json is missing. Run `npm run build:site` to generate it.";
+        });
+
+      /**
+       * Grades the same two quantities the cards show, so the bar above and the
+       * measured grid can be read straight across. The library's own estimate
+       * is a third thing again — it sits above the average on purpose — and
+       * lives in the detail table rather than here.
+       */
+      function compare(label, passiveBps, measuredBps, note = "") {
+        if (!passiveBps || !measuredBps) return "";
+        const error = ((passiveBps - measuredBps) / measuredBps) * 100;
+        const magnitude = Math.abs(error);
+        const rank = magnitude <= 10 ? "good" : magnitude <= 25 ? "warn" : "bad";
+        return `
+          <div style="margin-bottom: 10px">
+            <div class="label muted small">${label}</div>
+            <div style="font-size: 1.15rem; font-weight: 620">
+              ${formatBitsPerSecond(passiveBps)} passive vs ${formatBitsPerSecond(measuredBps)} measured
+              <span class="tag ${rank}">${error >= 0 ? "+" : ""}${error.toFixed(1)}%</span>
+            </div>
+            ${note ? `<div class="small muted">${note}</div>` : ""}
+          </div>
+        `;
+      }
+
+      function renderVerdict(before, after, download, upload) {
+        const box = document.getElementById("verdict");
+        if (!download.averageBitsPerSecond) {
+          box.innerHTML = `<p class="small muted" style="margin:0">The test moved no bytes.</p>`;
+          return;
+        }
+
+        if (!before?.download.averageBitsPerSecond) {
+          box.innerHTML = `
+            <div class="small muted">
+              Nothing observed passively yet — this page is too light. Browse the gallery or media
+              pages first, then run this.
+            </div>
+          `;
+          return;
+        }
+
+        const rows = [
+          compare(
+            "Average download, before the test",
+            before.download.averageBitsPerSecond,
+            download.averageBitsPerSecond,
+            `${before.download.confidence.samples} samples · ${(
+              before.download.confidence.score * 100
+            ).toFixed(0)}% confidence`,
+          ),
+          compare("Peak download, before the test", before.download.peakBitsPerSecond, download.peakBitsPerSecond),
+          compare(
+            "Average upload, before the test",
+            before.upload.averageBitsPerSecond,
+            upload?.averageBitsPerSecond,
+            before.upload.averageBitsPerSecond ? `${before.upload.confidence.samples} samples` : "",
+          ),
+          compare("Peak upload, before the test", before.upload.peakBitsPerSecond, upload?.peakBitsPerSecond),
+        ];
+
+        if (after?.download.averageBitsPerSecond) {
+          rows.push(`
+            <div class="small muted">
+              After the test the passive average reads ${formatBitsPerSecond(after.download.averageBitsPerSecond)}. Not
+              an independent check — the library watched this traffic too, though it sees little of
+              it: the test cancels whatever is in flight when the clock runs out, and a browser
+              reports only transfers that finish.
+            </div>
+          `);
+        }
+
+        box.innerHTML = rows.join("");
+      }
+
+      function renderDetail(download, upload, latency, before) {
+        const rows = [
+          ["Passive estimate at the time", formatBitsPerSecond(before?.download.bitsPerSecond)],
+          ["Measured download", formatBitsPerSecond(download.averageBitsPerSecond)],
+          [`Best sustained ${formatMilliseconds(download.peakWindowMs)}`, formatBitsPerSecond(download.peakBitsPerSecond)],
+          ["Including the opening ramp", formatBitsPerSecond(download.rawBps)],
+          ["Body bytes counted", formatBytes(download.bodyBytes)],
+          [
+            "Header overhead",
+            download.wireBytes === null || !download.wireEncodedBytes
+              ? "not reported"
+              : `${(
+                  ((download.wireBytes - download.wireEncodedBytes) / download.wireEncodedBytes) *
+                  100
+                ).toFixed(2)}% across ${(download.wireCoverage * 100).toFixed(0)}% of requests`,
+          ],
+          ["Parallel streams", String(download.streams)],
+          ["Requests issued", String(download.requests)],
+          ["Run length", formatMilliseconds(download.durationMilliseconds)],
+          [
+            "Download stopped because",
+            `${stopNote(download)} · ${formatMilliseconds(download.warmupMs)} ramp discarded, ${formatMilliseconds(
+              download.measuredMs,
+            )} measured`,
+          ],
+          ["Download budget", budgetNote(download, download.bodyBytes)],
+          ["Measured upload", formatBitsPerSecond(upload.averageBitsPerSecond)],
+          ["Bytes counted / sent", `${formatBytes(upload.bytes)} / ${formatBytes(upload.sentBytes)}`],
+          ["Upload stopped because", stopNote(upload)],
+          ["Upload budget", budgetNote(upload, upload.sentBytes)],
+          ["Upload body size", formatBytes(upload.chunkBytes)],
+          ["Latency pings", `${latency.samples} · ${formatBytes(latency.bytes)}`],
+          [
+            "Data used by this test",
+            formatBytes(latency.bytes + download.bodyBytes + upload.sentBytes),
+          ],
+          [
+            "Uploads accepted",
+            `${upload.completed} of ${upload.requests}${upload.refused ? ` · ${upload.refused} refused` : ""}`,
+          ],
+          ["Round trip", formatMilliseconds(latency.roundTripMilliseconds)],
+          ["Median time to first byte", formatMilliseconds(latency.timeToFirstByteMilliseconds)],
+          ["Jitter", formatMilliseconds(latency.jitterMilliseconds)],
+          [
+            "Passive round trip",
+            before?.latency.roundTripMilliseconds === null || before?.latency.roundTripMilliseconds === undefined
+              ? "—"
+              : formatMilliseconds(before.latency.roundTripMilliseconds),
+          ],
+          ["Ran at", new Date(download.at).toLocaleTimeString()],
+        ];
+        document.getElementById("detail").replaceChildren(
+          ...rows.map(([label, value]) => {
+            const tr = document.createElement("tr");
+            tr.innerHTML = `<td class="muted">${label}</td><td class="num">${value}</td>`;
+            return tr;
+          }),
+        );
+      }
+
+      let unwatch = null;
+
+      function watchAfter(before, download, upload) {
+        unwatch?.();
+        window.freeloader?.flush();
+        const stop = window.freeloader?.subscribe((estimate) => {
+          renderVerdict(before, estimate, download, upload);
+        });
+        const timer = setTimeout(() => {
+          window.freeloader?.flush();
+          unwatch?.();
+          unwatch = null;
+        }, 6000);
+        unwatch = () => {
+          clearTimeout(timer);
+          stop?.();
+        };
+      }
+
+      document.getElementById("run").addEventListener("click", async () => {
+        const button = document.getElementById("run");
+        const durationMilliseconds = Number(document.getElementById("duration").value);
+        const streams = Number(document.getElementById("streams").value);
+        // Split across the two directions. The download gets the larger share:
+        // it is the number people care about, and the far end of the upload is
+        // somebody's static host that never wanted the bytes in the first place.
+        const cap = Number(document.getElementById("cap").value);
+        const downCap = cap > 0 ? Math.round(cap * 0.6) : Infinity;
+        const upCap = cap > 0 ? Math.round(cap * 0.4) : Infinity;
+        button.disabled = true;
+        button.textContent = "Running…";
+        unwatch?.();
+        unwatch = null;
+
+        // Snapshot first. Once the test starts pulling bytes, the library is
+        // watching them like any other traffic, and the comparison is spoiled.
+        const before = window.freeloader ? structuredClone(window.freeloader.getEstimate()) : null;
+
+        try {
+          status.textContent = "Measuring latency…";
+          const latency = await runLatencyTest({
+            file: smallest,
+            onProgress: ({ done, count }) => {
+              status.textContent = `Latency · ping ${done} of ${count}`;
+            },
+          });
+          text("rtt", formatMilliseconds(latency.roundTripMilliseconds));
+          text("rtt-sub", `jitter ${formatMilliseconds(latency.jitterMilliseconds)} · ${latency.samples} pings`);
+
+          status.textContent = `Downloading over ${streams} stream${streams === 1 ? "" : "s"}…`;
+          const download = await runDownloadTest({
+            files,
+            streams,
+            durationMilliseconds,
+            maxBytes: downCap,
+            // The ramp to discard and the window worth measuring are both
+            // counted in round trips, and one was just measured.
+            roundTripMilliseconds: latency.roundTripMilliseconds,
+            onProgress: ({ currentBps, totalBytes, progress: fraction }) => {
+              progress.style.width = `${Math.round(fraction * 100)}%`;
+              status.textContent = `${formatBitsPerSecond(currentBps)} down`;
+              text("used", formatBytes(latency.bytes + totalBytes));
+              text("used-sub", "downloading…");
+            },
+          });
+
+          progress.style.width = "100%";
+          text("down-avg", formatBitsPerSecond(download.averageBitsPerSecond));
+          text(
+            "down-avg-sub",
+            `${streams} streams · ${formatMilliseconds(download.durationMilliseconds)} · ${stopNote(download)}`,
+          );
+          text("down-peak", formatBitsPerSecond(download.peakBitsPerSecond));
+          text("down-peak-sub", `best ${formatMilliseconds(download.peakWindowMs)} window`);
+          status.textContent = `Uploading over ${Math.min(4, streams)} stream${
+            streams === 1 ? "" : "s"
+          }…`;
+          progress.style.width = "0%";
+          const upload = await runUploadTest({
+            streams: Math.min(4, streams),
+            durationMilliseconds,
+            maxBytes: upCap,
+            roundTripMilliseconds: latency.roundTripMilliseconds,
+            onProgress: ({ currentBps, totalBytes, progress: fraction }) => {
+              progress.style.width = `${Math.round(fraction * 100)}%`;
+              status.textContent = `${formatBitsPerSecond(currentBps)} up`;
+              text("used", formatBytes(latency.bytes + download.bodyBytes + totalBytes));
+              text("used-sub", "uploading…");
+            },
+          });
+
+          progress.style.width = "100%";
+          text("up-avg", formatBitsPerSecond(upload.averageBitsPerSecond));
+          text("up-peak", formatBitsPerSecond(upload.peakBitsPerSecond));
+          // No peak: a browser reports bytes handed to the socket, in lumps, so
+          // any window short enough to mean "peak" reads far above the truth.
+          text("up-avg-sub", upload.unmeasurable
+            ? "refused by the host"
+            : `${upload.completed} of ${upload.requests} accepted · ${stopNote(upload)}`);
+          text("up-peak-sub", "not measurable in a browser");
+
+          // What it cost, not what it measured: bytes from a refused upload
+          // still crossed the wire and still count against somebody's plan.
+          const used = latency.bytes + download.bodyBytes + upload.sentBytes;
+          text("used", formatBytes(used));
+          text(
+            "used-sub",
+            `${formatBytes(download.bodyBytes)} down · ${formatBytes(upload.sentBytes)} up`,
+          );
+          status.textContent = "Done.";
+
+          const result = { download, upload, latency, passiveBefore: before };
+          saveResult(result);
+
+          renderDetail(download, upload, latency, before);
+          renderVerdict(before, window.freeloader?.getEstimate() ?? null, download, upload);
+
+          // A browser reports a transfer only when it finishes, and the last of
+          // the test's downloads were still in flight when the clock ran out —
+          // so the "after" figure keeps refreshing for a few seconds rather than
+          // being read once and frozen at whatever had arrived by then.
+          watchAfter(before, download, upload);
+        } catch (error) {
+          status.textContent = `Failed: ${error.message}`;
+        } finally {
+          button.disabled = false;
+          button.textContent = "Run the test again";
+        }
+      });
+    </script>
+  </body>
+</html>

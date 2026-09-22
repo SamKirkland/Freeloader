@@ -1,0 +1,76 @@
+name: Deploy demo to GitHub Pages
+
+# Every push to the default branch publishes the demo, which includes every pull
+# request merge — a merge is a push. Both common default-branch names are listed
+# so the workflow works whatever this repository ends up calling its trunk.
+on:
+  push:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+
+# Pages needs to mint an id-token to deploy; nothing here writes to the repo.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deploy at a time. In-progress runs finish rather than being cancelled, so
+# a half-uploaded artifact never becomes the live site.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # The demo is the library's shop window; shipping it broken is worse than
+      # not shipping it. A failure here stops the deploy and leaves the current
+      # site up.
+      - run: npm test
+      - run: npm run typecheck
+
+      # Builds src/ into site/freeloader.js and regenerates the asset manifest
+      # from the committed assets, so their listed sizes are always the truth.
+      - run: npm run build:site
+
+      # Guards against publishing a half-built site: the compiled library and
+      # the manifest are what the pages import and what the speed test measures
+      # against, and neither is in the repository.
+      - name: Check the build produced what the site needs
+        run: |
+          test -f site/freeloader.js
+          test -f site/assets/manifest.json
+          test -f site/.nojekyll
+          test "$(find site/assets/generated -type f | wc -l)" -gt 0
+
+      # `enablement` turns Pages on for the repository if it is not already on,
+      # so a fresh clone of this repo deploys without anyone visiting Settings.
+      - uses: actions/configure-pages@v5
+        with:
+          enablement: true
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

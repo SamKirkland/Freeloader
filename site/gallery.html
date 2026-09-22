@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Gallery — Freeloader demo</title>
+    <link rel="stylesheet" href="css/site.css" />
+    <script type="module" src="js/boot.js"></script>
+  </head>
+  <body>
+    <header class="site">
+      <div class="inner">
+        <a class="brand" href="index.html">free<span>loader</span></a>
+        <nav class="site">
+          <a href="index.html">Home</a>
+          <a href="gallery.html">Gallery</a>
+          <a href="media.html">Media</a>
+          <a href="app.html">Dashboard</a>
+          <a href="about.html">About</a>
+          <a href="usage.html">Usage</a>
+          <a href="network.html">Network</a>
+          <a href="speedtest.html">Speed test</a>
+          <a href="debug.html">Debug</a>
+        </nav>
+      </div>
+    </header>
+
+    <div class="metrics" id="freeloader-metrics">
+      <div class="metric">
+        <div class="label">Average download</div>
+        <div class="value" data-metric="download-average">—</div>
+        <div class="sub" data-metric="download-average-detail">&nbsp;</div>
+      </div>
+      <div class="metric">
+        <div class="label">Peak download</div>
+        <div class="value" data-metric="download-peak">—</div>
+        <div class="sub" data-metric="download-peak-detail">&nbsp;</div>
+      </div>
+      <div class="metric">
+        <div class="label">Average upload</div>
+        <div class="value" data-metric="upload-average">—</div>
+        <div class="sub" data-metric="upload-average-detail">&nbsp;</div>
+      </div>
+      <div class="metric">
+        <div class="label">Peak upload</div>
+        <div class="value" data-metric="upload-peak">—</div>
+        <div class="sub" data-metric="upload-peak-detail">&nbsp;</div>
+      </div>
+      <div class="metric">
+        <div class="label">Latency</div>
+        <div class="value" data-metric="round-trip">—</div>
+        <div class="sub" data-metric="round-trip-detail">&nbsp;</div>
+      </div>
+    </div>
+
+    <main>
+      <h1>Gallery</h1>
+      <div class="row" style="margin-bottom: 18px">
+        <button class="primary" id="load-more">Load six more</button>
+        <button id="reload-all">Reload all (bypass cache)</button>
+      </div>
+
+      <div class="gallery" id="gallery"></div>
+
+      <h2>What the library saw</h2>
+      <div class="scroll">
+        <table id="bursts">
+          <thead>
+            <tr>
+              <th>Source</th>
+              <th class="num">Bytes</th>
+              <th class="num">Window</th>
+              <th class="num">Parallel</th>
+              <th class="num">Rate</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td colspan="5" class="muted small">—</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </main>
+
+
+    <script type="module">
+      import { formatBitsPerSecond, formatBytes, formatMilliseconds } from "./freeloader.js";
+
+      const IMAGES = Array.from({ length: 12 }, (_, i) => `gallery-${String(i + 1).padStart(2, "0")}.jpg`);
+      const gallery = document.getElementById("gallery");
+
+      /**
+       * Bytes each image cost, from Resource Timing, keyed by URL. Collected
+       * by an observer rather than looked up later: the browser's timing
+       * buffer holds only 250 entries, and a long gallery outgrows it.
+       */
+      const transferred = new Map();
+      new PerformanceObserver((list) => {
+        for (const entry of list.getEntries()) {
+          transferred.set(entry.name, entry.transferSize);
+          const img = gallery.querySelector(`img[src="${CSS.escape(entry.name)}"]`);
+          if (img?.complete) caption(img);
+        }
+      }).observe({ type: "resource", buffered: true });
+
+      function caption(img) {
+        const size = transferred.get(img.src);
+        // No entry yet means the observer hasn't delivered it; it will
+        // caption the image when it does.
+        if (size === undefined) return;
+        img.closest("figure").querySelector("[data-size]").textContent = size ? formatBytes(size) : "cached";
+      }
+
+      /** Points an image at a URL and captions it once it has loaded. */
+      function load(img, url) {
+        img.closest("figure").querySelector("[data-size]").textContent = "…";
+        img.src = new URL(url, location.href).href;
+      }
+
+      function add(file, bust) {
+        const figure = document.createElement("figure");
+        figure.dataset.file = file;
+        figure.innerHTML = `
+          <img alt="${file}" loading="eager" decoding="async" />
+          <figcaption><span>${file}</span><span data-size>…</span></figcaption>
+        `;
+        gallery.appendChild(figure);
+        const img = figure.querySelector("img");
+        img.addEventListener("load", () => caption(img));
+        load(img, `assets/generated/${file}${bust ? `?v=${bust}` : ""}`);
+      }
+
+      for (const file of IMAGES) add(file);
+
+      document.getElementById("load-more").addEventListener("click", () => {
+        const bust = Date.now();
+        for (const file of IMAGES.slice(0, 6)) add(file, bust);
+      });
+
+      // Every image on the page again, fresh from the network. Each one gets
+      // its own URL: the same file appears many times, and copies sharing a
+      // URL would be fetched once and the rest served from memory.
+      document.getElementById("reload-all").addEventListener("click", () => {
+        const bust = Date.now();
+        gallery.querySelectorAll("figure").forEach((figure, i) => {
+          load(figure.querySelector("img"), `assets/generated/${figure.dataset.file}?v=${bust}-${i}`);
+        });
+      });
+
+      // Show the raw samples the library derived from all of this.
+      function renderBursts() {
+        if (!window.freeloader) return;
+        const samples = window.freeloader.debug().lastSamples;
+        const body = document.querySelector("#bursts tbody");
+        if (samples.length === 0) return;
+        body.replaceChildren(
+          ...samples
+            .slice()
+            .reverse()
+            .map((sample) => {
+              const row = document.createElement("tr");
+              row.innerHTML = `
+                <td><span class="tag">${sample.source}</span></td>
+                <td class="num">${formatBytes(sample.bytes)}</td>
+                <td class="num">${formatMilliseconds(sample.durationMilliseconds)}</td>
+                <td class="num">${sample.concurrency.toFixed(1)}×</td>
+                <td class="num">${formatBitsPerSecond(sample.bitsPerSecond)}</td>
+              `;
+              return row;
+            }),
+        );
+      }
+
+      const start = () => {
+        if (!window.freeloader) return void setTimeout(start, 50);
+        renderBursts();
+        window.freeloader.subscribe(renderBursts);
+      };
+      start();
+    </script>
+  </body>
+</html>

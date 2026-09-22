@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Freeloader</title>
+    <link rel="stylesheet" href="css/site.css" />
+    <script type="module" src="js/boot.js"></script>
+  </head>
+  <body>
+    <header class="site">
+      <div class="inner">
+        <a class="brand" href="index.html">free<span>loader</span></a>
+        <nav class="site">
+          <a href="index.html">Home</a>
+          <a href="gallery.html">Gallery</a>
+          <a href="media.html">Media</a>
+          <a href="app.html">Dashboard</a>
+          <a href="about.html">About</a>
+          <a href="usage.html">Usage</a>
+          <a href="network.html">Network</a>
+          <a href="speedtest.html">Speed test</a>
+          <a href="debug.html">Debug</a>
+        </nav>
+      </div>
+    </header>
+
+    <div class="metrics" id="freeloader-metrics">
+      <div class="metric">
+        <div class="label">Average download</div>
+        <div class="value" data-metric="download-average">—</div>
+        <div class="sub" data-metric="download-average-detail">&nbsp;</div>
+      </div>
+      <div class="metric">
+        <div class="label">Peak download</div>
+        <div class="value" data-metric="download-peak">—</div>
+        <div class="sub" data-metric="download-peak-detail">&nbsp;</div>
+      </div>
+      <div class="metric">
+        <div class="label">Average upload</div>
+        <div class="value" data-metric="upload-average">—</div>
+        <div class="sub" data-metric="upload-average-detail">&nbsp;</div>
+      </div>
+      <div class="metric">
+        <div class="label">Peak upload</div>
+        <div class="value" data-metric="upload-peak">—</div>
+        <div class="sub" data-metric="upload-peak-detail">&nbsp;</div>
+      </div>
+      <div class="metric">
+        <div class="label">Latency</div>
+        <div class="value" data-metric="round-trip">—</div>
+        <div class="sub" data-metric="round-trip-detail">&nbsp;</div>
+      </div>
+    </div>
+
+    <main>
+      <h1>Passive network measurement</h1>
+
+      </div>
+
+      <img
+        src="assets/generated/hero.jpg"
+        alt=""
+        width="2400"
+        height="1200"
+        style="width: 100%; height: auto; border-radius: var(--radius); display: block; margin: 0 0 8px"
+      />
+
+      <h2>How it works</h2>
+      <div class="grid cols-2">
+        <div class="card">
+          <h3>Bursts, not requests</h3>
+          <p class="small">
+            Six images at once each look slow alone, because each is getting a slice of the link.
+            Overlapping transfers merge into one burst: total bytes over the wall time it occupied.
+          </p>
+        </div>
+        <div class="card">
+          <h3>Slow start, undone</h3>
+          <p class="small">
+            A new connection's window doubles each round trip rather than opening at full speed.
+            The ramp costs a predictable amount of time, subtracted only where the timings show a
+            real handshake — never on a reused connection, which never paid it.
+          </p>
+        </div>
+        <div class="card">
+          <h3>Regression across sizes</h3>
+          <p class="small">
+            Duration is roughly overhead plus bytes over rate. Fit duration against size across a
+            session and the rate falls out of the slope, the overhead out of the intercept.
+          </p>
+        </div>
+        <div class="card">
+          <h3>A lower bound</h3>
+          <p class="small">
+            Nothing in passive measurement makes a link look faster than it is; plenty makes it
+            look slower. So every figure carries a confidence score, and a page too light to reveal
+            anything says so instead of guessing.
+          </p>
+        </div>
+      </div>
+
+      <h2>Usage</h2>
+      <pre><code>import { Freeloader } from "./freeloader.js";
+
+const freeloader = Freeloader.start();  // observes; never requests
+freeloader.subscribe((e) =&gt; console.log(e.download.megabitsPerSecond, e.latency.roundTripMilliseconds));</code></pre>
+      <p><a href="usage.html">Full usage guide, options and recipes →</a></p>
+
+    </main>
+
+
+  </body>
+</html>

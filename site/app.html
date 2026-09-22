@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Dashboard — Freeloader demo</title>
+    <link rel="stylesheet" href="css/site.css" />
+    <script type="module" src="js/boot.js"></script>
+    <!-- Chunky vendor bundles, exactly the kind of script weight a real app ships. -->
+    <script type="module" src="assets/generated/vendor-charts.js"></script>
+    <script type="module" src="assets/generated/vendor-icons.js"></script>
+  </head>
+  <body>
+    <header class="site">
+      <div class="inner">
+        <a class="brand" href="index.html">free<span>loader</span></a>
+        <nav class="site">
+          <a href="index.html">Home</a>
+          <a href="gallery.html">Gallery</a>
+          <a href="media.html">Media</a>
+          <a href="app.html">Dashboard</a>
+          <a href="about.html">About</a>
+          <a href="usage.html">Usage</a>
+          <a href="network.html">Network</a>
+          <a href="speedtest.html">Speed test</a>
+          <a href="debug.html">Debug</a>
+        </nav>
+      </div>
+    </header>
+
+    <div class="metrics" id="freeloader-metrics">
+      <div class="metric">
+        <div class="label">Average download</div>
+        <div class="value" data-metric="download-average">—</div>
+        <div class="sub" data-metric="download-average-detail">&nbsp;</div>
+      </div>
+      <div class="metric">
+        <div class="label">Peak download</div>
+        <div class="value" data-metric="download-peak">—</div>
+        <div class="sub" data-metric="download-peak-detail">&nbsp;</div>
+      </div>
+      <div class="metric">
+        <div class="label">Average upload</div>
+        <div class="value" data-metric="upload-average">—</div>
+        <div class="sub" data-metric="upload-average-detail">&nbsp;</div>
+      </div>
+      <div class="metric">
+        <div class="label">Peak upload</div>
+        <div class="value" data-metric="upload-peak">—</div>
+        <div class="sub" data-metric="upload-peak-detail">&nbsp;</div>
+      </div>
+      <div class="metric">
+        <div class="label">Latency</div>
+        <div class="value" data-metric="round-trip">—</div>
+        <div class="sub" data-metric="round-trip-detail">&nbsp;</div>
+      </div>
+    </div>
+
+    <main>
+      <h1>Dashboard</h1>
+      <p class="lede">
+        Vendor bundles, JSON over fetch, file uploads.
+      </p>
+
+      <h2>Send data</h2>
+      <div class="row">
+        <button class="primary" data-upload="xhr" data-mb="2">Upload 2 MB (XHR)</button>
+        <button data-upload="xhr" data-mb="8">Upload 8 MB (XHR)</button>
+        <button data-upload="fetch" data-mb="4">Upload 4 MB (fetch)</button>
+        <button id="load-vendor">Load the 900 KB editor bundle</button>
+      </div>
+      <p class="small muted" id="upload-log">&nbsp;</p>
+
+      <h2>Rows</h2>
+      <div class="row" style="margin-bottom: 12px">
+        <button id="refresh" class="primary" data-rows="200">Fetch 200 rows</button>
+        <button id="refresh-big" data-rows="2000">Fetch 2000 rows</button>
+        <span class="small muted" id="rows-note">—</span>
+      </div>
+      <div class="scroll">
+        <table id="rows">
+          <thead>
+            <tr>
+              <th>Region</th>
+              <th class="num">Requests</th>
+              <th class="num">p95</th>
+              <th class="num">Errors</th>
+              <th>Seen</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td colspan="5" class="muted small">—</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </main>
+
+
+    <script type="module">
+      import { formatBytes, formatMilliseconds } from "./freeloader.js";
+
+      const log = document.getElementById("upload-log");
+
+      /**
+       * Where the bytes go. Nothing accepts them — a static host answers a POST
+       * with 405 — and nothing needs to: the browser reports the body going out
+       * over the wire whatever comes back, which is the only thing being timed.
+       */
+      const SINK = "assets/sink.txt";
+
+      /** A buffer of incompressible-ish bytes, so the link is what limits us. */
+      function payload(megabytes) {
+        const bytes = new Uint8Array(megabytes * 1024 * 1024);
+        crypto.getRandomValues(bytes.subarray(0, Math.min(bytes.length, 65536)));
+        for (let offset = 65536; offset < bytes.length; offset += 65536) {
+          bytes.copyWithin(offset, 0, Math.min(65536, bytes.length - offset));
+        }
+        return bytes;
+      }
+
+      /**
+       * Resolves when the body has finished going out, which is the event worth
+       * waiting for. The response status is not consulted: a refusal arrives
+       * after the bytes have already crossed the network.
+       */
+      function uploadViaXhr(bytes) {
+        return new Promise((resolve, reject) => {
+          const xhr = new XMLHttpRequest();
+          xhr.open("POST", SINK);
+          xhr.upload.addEventListener("load", (event) =>
+            resolve({ bytes: event.lengthComputable ? event.loaded : bytes.byteLength }),
+          );
+          xhr.upload.addEventListener("error", () => reject(new Error("the upload was refused")));
+          xhr.addEventListener("error", () => reject(new Error("the upload was refused")));
+          xhr.send(bytes);
+        });
+      }
+
+      for (const button of document.querySelectorAll("[data-upload]")) {
+        button.addEventListener("click", async () => {
+          const mb = Number(button.dataset.mb);
+          const mode = button.dataset.upload;
+          const label = button.textContent;
+          button.disabled = true;
+          button.textContent = "Sending…";
+          const started = performance.now();
+          try {
+            const bytes = payload(mb);
+            const result =
+              mode === "xhr"
+                ? await uploadViaXhr(bytes)
+                : await fetch(SINK, { method: "POST", body: bytes }).then(() => ({
+                    bytes: bytes.byteLength,
+                  }));
+            const elapsed = performance.now() - started;
+            log.textContent = `Sent ${formatBytes(result.bytes)} via ${mode} in ${formatMilliseconds(elapsed)}.`;
+          } catch (error) {
+            log.textContent = `Upload failed: ${error.message}`;
+          } finally {
+            button.disabled = false;
+            button.textContent = label;
+          }
+        });
+      }
+
+      document.getElementById("load-vendor").addEventListener("click", async (event) => {
+        const button = event.currentTarget;
+        button.disabled = true;
+        try {
+          // The leading "./" is not decoration: a specifier without it is a bare
+          // module name, which does not resolve and throws.
+          await import(`./assets/generated/vendor-editor.js?v=${Date.now()}`);
+          button.textContent = "Editor bundle loaded";
+        } catch (error) {
+          button.disabled = false;
+          log.textContent = `Could not load the bundle: ${error.message}`;
+        }
+      });
+
+      async function loadRows(count) {
+        const note = document.getElementById("rows-note");
+        note.textContent = "—";
+        // One file per size, so the two buttons really do move different
+        // numbers of bytes. A static host cannot generate a response, but it can
+        // hold both.
+        const response = await fetch(`assets/data/rows-${count}.json?v=${Date.now()}`, {
+          cache: "no-store",
+        });
+        const body = await response.json();
+        const transferred =
+          performance.getEntriesByName(new URL(response.url, location.href).href).pop()?.transferSize ?? 0;
+        const rows = body.rows.map((row) => ({
+          ...row,
+          at: new Date(Date.now() - (row.offsetMinutes ?? 0) * 60_000).toISOString(),
+        }));
+        const tbody = document.querySelector("#rows tbody");
+        tbody.replaceChildren(
+          ...rows.slice(0, 40).map((row) => {
+            const tr = document.createElement("tr");
+            tr.innerHTML = `
+              <td>${row.region}</td>
+              <td class="num">${row.requests.toLocaleString()}</td>
+              <td class="num">${row.p95Ms} ms</td>
+              <td class="num">${(row.errorRate * 100).toFixed(2)}%</td>
+              <td class="small muted">${new Date(row.at).toLocaleTimeString()}</td>
+            `;
+            return tr;
+          }),
+        );
+        note.textContent = `${rows.length} rows · ${
+          transferred ? `${formatBytes(transferred)} · ` : ""
+        }first 40 shown`;
+      }
+
+      for (const button of document.querySelectorAll("[data-rows]")) {
+        button.addEventListener("click", () => loadRows(Number(button.dataset.rows)));
+      }
+      loadRows(200);
+
+    </script>
+  </body>
+</html>

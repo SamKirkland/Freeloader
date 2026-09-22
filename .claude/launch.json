@@ -1,0 +1,46 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "demo",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["tools/dev-server.mjs", "--port", "8099"],
+      "port": 8099
+    },
+    {
+      "name": "pages-preview",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["tools/dev-server.mjs", "--port", "8098", "--base", "SpeedTest"],
+      "port": 8098,
+      "url": "http://localhost:8098"
+    },
+    {
+      "name": "throttled",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "tools/dev-server.mjs",
+        "--port",
+        "8097",
+        "--mbps",
+        "100",
+        "--latency",
+        "40",
+        "--jitter",
+        "5"
+      ],
+      "port": 8097
+    },
+    {
+      "name": "3g-buffered",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["tools/dev-server.mjs", "--port", "8096", "--mbps", "0.4", "--latency", "2000", "--buffer"],
+      "port": 8096
+    },
+    {
+      "name": "3g-streaming",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["tools/dev-server.mjs", "--port", "8095", "--mbps", "0.4", "--latency", "2000"],
+      "port": 8095
+    }
+  ]
+}

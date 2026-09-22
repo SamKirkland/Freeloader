@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Media — Freeloader demo</title>
+    <link rel="stylesheet" href="css/site.css" />
+    <script type="module" src="js/boot.js"></script>
+  </head>
+  <body>
+    <header class="site">
+      <div class="inner">
+        <a class="brand" href="index.html">free<span>loader</span></a>
+        <nav class="site">
+          <a href="index.html">Home</a>
+          <a href="gallery.html">Gallery</a>
+          <a href="media.html">Media</a>
+          <a href="app.html">Dashboard</a>
+          <a href="about.html">About</a>
+          <a href="usage.html">Usage</a>
+          <a href="network.html">Network</a>
+          <a href="speedtest.html">Speed test</a>
+          <a href="debug.html">Debug</a>
+        </nav>
+      </div>
+    </header>
+
+    <div class="metrics" id="freeloader-metrics">
+      <div class="metric">
+        <div class="label">Average download</div>
+        <div class="value" data-metric="download-average">—</div>
+        <div class="sub" data-metric="download-average-detail">&nbsp;</div>
+      </div>
+      <div class="metric">
+        <div class="label">Peak download</div>
+        <div class="value" data-metric="download-peak">—</div>
+        <div class="sub" data-metric="download-peak-detail">&nbsp;</div>
+      </div>
+      <div class="metric">
+        <div class="label">Average upload</div>
+        <div class="value" data-metric="upload-average">—</div>
+        <div class="sub" data-metric="upload-average-detail">&nbsp;</div>
+      </div>
+      <div class="metric">
+        <div class="label">Peak upload</div>
+        <div class="value" data-metric="upload-peak">—</div>
+        <div class="sub" data-metric="upload-peak-detail">&nbsp;</div>
+      </div>
+      <div class="metric">
+        <div class="label">Latency</div>
+        <div class="value" data-metric="round-trip">—</div>
+        <div class="sub" data-metric="round-trip-detail">&nbsp;</div>
+      </div>
+    </div>
+
+    <main>
+      <h1>Media</h1>
+      <div class="grid cols-2">
+        <div>
+          <video id="main-video" controls autoplay muted playsinline preload="auto" poster="assets/generated/thumb-b.jpg">
+            <source src="assets/generated/clip-720p.mp4" type="video/mp4" />
+            Your browser cannot play this clip.
+          </video>
+          <div class="row" style="margin-top: 10px">
+            <button class="primary" id="play">Play</button>
+            <button id="switch-1080">Switch to 1080p (16.4 MB)</button>
+            <button id="seek">Jump to the middle</button>
+          </div>
+          <p class="small muted" id="video-note">
+            720p · 7.8 MB
+          </p>
+        </div>
+
+        <div>
+          <video id="loop-video" controls autoplay muted loop playsinline preload="auto" poster="assets/generated/thumb-c.jpg">
+            <source src="assets/generated/loop-480p.webm" type="video/webm" />
+          </video>
+          <div class="row" style="margin-top: 10px">
+            <button id="play-loop">Play the WebM loop</button>
+            <button id="prefetch">Prefetch the 1080p clip</button>
+          </div>
+        </div>
+      </div>
+
+      <h2>Video transfers observed</h2>
+      <div class="scroll">
+        <table id="media-table">
+          <thead>
+            <tr>
+              <th>Resource</th>
+              <th class="num">Bytes</th>
+              <th class="num">TTFB</th>
+              <th class="num">Body time</th>
+              <th class="num">Rate</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td colspan="5" class="muted small">—</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+    </main>
+
+
+    <script type="module">
+      import { formatBitsPerSecond, formatBytes, formatMilliseconds } from "./freeloader.js";
+
+      const video = document.getElementById("main-video");
+      const loop = document.getElementById("loop-video");
+
+      /** Autoplay is a request, not a guarantee; a refusal is not an error. */
+      const play = (element) => void element.play().catch(() => {});
+
+      document.getElementById("play").addEventListener("click", () => play(video));
+      document.getElementById("play-loop").addEventListener("click", () => play(loop));
+      document.getElementById("seek").addEventListener("click", () => {
+        video.currentTime = Math.max(0, (video.duration || 24) / 2);
+        play(video);
+      });
+      document.getElementById("switch-1080").addEventListener("click", () => {
+        video.pause();
+        video.src = "assets/generated/clip-1080p.mp4";
+        video.load();
+        play(video);
+        document.getElementById("video-note").textContent =
+          "1080p, 16.4 MB.";
+      });
+      document.getElementById("prefetch").addEventListener("click", async (event) => {
+        const button = event.currentTarget;
+        button.disabled = true;
+        button.textContent = "Prefetching…";
+        // A plain fetch of a large file: exactly the traffic a real app makes.
+        const response = await fetch(`assets/generated/clip-1080p.mp4?prefetch=${Date.now()}`);
+        await response.arrayBuffer();
+        button.textContent = "Prefetched";
+      });
+
+      const MEDIA = /\.(mp4|webm)(\?|$)/;
+
+      function renderMedia() {
+        const rows = performance
+          .getEntriesByType("resource")
+          .filter((entry) => MEDIA.test(entry.name))
+          // A range request made during playback reports its headers and no
+          // body, so it arrives as a few hundred bytes. Rendering those as
+          // transfers would put a meaningless rate in the table.
+          .filter((entry) => entry.transferSize > 4096)
+          .slice(-12)
+          .reverse();
+        const body = document.querySelector("#media-table tbody");
+        if (rows.length === 0) return;
+        body.replaceChildren(
+          ...rows.map((entry) => {
+            const bodyMs = entry.responseEnd - entry.responseStart;
+            const row = document.createElement("tr");
+            row.innerHTML = `
+              <td class="small">${entry.name.split("/").pop().split("?")[0]}</td>
+              <td class="num">${formatBytes(entry.transferSize)}</td>
+              <td class="num">${formatMilliseconds(entry.responseStart - entry.requestStart)}</td>
+              <td class="num">${formatMilliseconds(bodyMs)}</td>
+              <td class="num">${formatBitsPerSecond(bodyMs > 0 ? (entry.transferSize * 8000) / bodyMs : null)}</td>
+            `;
+            return row;
+          }),
+        );
+      }
+
+      const start = () => {
+        if (!window.freeloader) return void setTimeout(start, 50);
+        renderMedia();
+        window.freeloader.subscribe(renderMedia);
+        setInterval(renderMedia, 1500);
+      };
+      start();
+    </script>
+  </body>
+</html>

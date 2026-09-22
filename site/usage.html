@@ -1,0 +1,550 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Usage — Freeloader demo</title>
+    <link rel="stylesheet" href="css/site.css" />
+    <script type="module" src="js/boot.js"></script>
+  </head>
+  <body>
+    <header class="site">
+      <div class="inner">
+        <a class="brand" href="index.html">free<span>loader</span></a>
+        <nav class="site">
+          <a href="index.html">Home</a>
+          <a href="gallery.html">Gallery</a>
+          <a href="media.html">Media</a>
+          <a href="app.html">Dashboard</a>
+          <a href="about.html">About</a>
+          <a href="usage.html">Usage</a>
+          <a href="network.html">Network</a>
+          <a href="speedtest.html">Speed test</a>
+          <a href="debug.html">Debug</a>
+        </nav>
+      </div>
+    </header>
+
+    <div class="metrics" id="freeloader-metrics">
+      <div class="metric">
+        <div class="label">Average download</div>
+        <div class="value" data-metric="download-average">—</div>
+        <div class="sub" data-metric="download-average-detail">&nbsp;</div>
+      </div>
+      <div class="metric">
+        <div class="label">Peak download</div>
+        <div class="value" data-metric="download-peak">—</div>
+        <div class="sub" data-metric="download-peak-detail">&nbsp;</div>
+      </div>
+      <div class="metric">
+        <div class="label">Average upload</div>
+        <div class="value" data-metric="upload-average">—</div>
+        <div class="sub" data-metric="upload-average-detail">&nbsp;</div>
+      </div>
+      <div class="metric">
+        <div class="label">Peak upload</div>
+        <div class="value" data-metric="upload-peak">—</div>
+        <div class="sub" data-metric="upload-peak-detail">&nbsp;</div>
+      </div>
+      <div class="metric">
+        <div class="label">Latency</div>
+        <div class="value" data-metric="round-trip">—</div>
+        <div class="sub" data-metric="round-trip-detail">&nbsp;</div>
+      </div>
+    </div>
+
+    <main>
+      <h1>Using Freeloader</h1>
+      <p class="lede" style="max-width: none">
+        Start it once, last, and read the estimate whenever you need it. It makes no
+        requests of its own, so there is nothing to schedule and nothing to budget for.
+      </p>
+
+      <h2>Install</h2>
+      <p>
+        Freeloader is one file with no dependencies. Download it, copy it into your project and
+        import it:
+      </p>
+      <ul>
+        <li>
+          <strong>TypeScript:</strong>
+          <a href="freeloader.ts" download><code>freeloader.ts</code></a>, the source itself.
+        </li>
+        <li>
+          <strong>JavaScript:</strong>
+          <a href="freeloader.js" download><code>freeloader.js</code></a>, plus
+          <a href="freeloader.d.ts" download><code>freeloader.d.ts</code></a> if you want types in
+          your editor.
+        </li>
+      </ul>
+      <p>To build all three from the repository:</p>
+      <pre><code>npm run build    # writes dist/freeloader.ts, freeloader.js and freeloader.d.ts</code></pre>
+
+      <h2>Where to start it</h2>
+      <p>Once per page load, in the browser. Load it last.</p>
+      <p>
+        Freeloader reads download timings from the browser's Resource Timing records, which the
+        browser keeps for everything the page has already loaded. So it doesn't need to run first:
+        downloads that finished before <code>start()</code> still count, and loading it last keeps
+        it out of your page's way.
+      </p>
+      <ul>
+        <li>
+          <strong>Uploads</strong> are the one exception: they're timed by wrapping
+          <code>fetch</code> and <code>XMLHttpRequest</code>, so uploads sent before
+          <code>start()</code> aren't measured.
+        </li>
+        <li><strong>Never on the server.</strong> In Node it would wrap the server's <code>fetch</code>.</li>
+      </ul>
+
+      <h3>Script tag</h3>
+      <pre><code>&lt;!DOCTYPE html&gt;
+&lt;html&gt;
+  &lt;head&gt;
+    &lt;script type="module" src="/app.js"&gt;&lt;/script&gt;
+  &lt;/head&gt;
+  &lt;body&gt;
+    &lt;!-- content --&gt;
+    &lt;script type="module"&gt;
+      // Start after everything else has loaded. Downloads so far are still read
+      // from the browser's timing records; uploads before this point are not timed.
+      addEventListener("load", async () =&gt; {
+        const { Freeloader } = await import("/freeloader.js");
+        window.freeloader = Freeloader.start();
+      }, { once: true });
+    &lt;/script&gt;
+  &lt;/body&gt;
+&lt;/html&gt;</code></pre>
+      <p>
+        Until the page's <code>load</code> event, <code>window.freeloader</code> is
+        <code>undefined</code>, so check for it before reading it. Freeloader is an ES module, so it
+        needs <code>type="module"</code> or <code>import()</code>; a classic
+        <code>&lt;script&gt;</code> won't work.
+      </p>
+
+      <h3>Bundled apps</h3>
+      <p>
+        Copy <code>freeloader.js</code> into your source folder, create one shared instance, and
+        import it from your entry file:
+      </p>
+      <pre><code>// src/network.ts
+import { Freeloader } from "./freeloader.js";
+
+export const network = Freeloader.start();</code></pre>
+
+      <h3>React</h3>
+      <pre><code>// src/main.tsx
+import "./network";
+import { createRoot } from "react-dom/client";
+import App from "./App";
+
+createRoot(document.getElementById("root")!).render(&lt;App /&gt;);</code></pre>
+      <pre><code>// src/useNetwork.ts
+import { useSyncExternalStore } from "react";
+import { network } from "./network";
+
+export function useNetwork() {
+  return useSyncExternalStore(
+    (onChange) =&gt; network.subscribe(onChange),
+    () =&gt; network.getEstimate(),
+  );
+}</code></pre>
+      <pre><code>// src/NetworkStatus.tsx
+import { formatBitsPerSecond, formatMilliseconds } from "./freeloader.js";
+import { useNetwork } from "./useNetwork";
+
+export function NetworkStatus() {
+  const { download, upload, latency } = useNetwork();
+  return (
+    &lt;p&gt;
+      ↓ {formatBitsPerSecond(download.bitsPerSecond)} · ↑ {formatBitsPerSecond(upload.bitsPerSecond)} ·{" "}
+      {formatMilliseconds(latency.roundTripMilliseconds)} ping
+    &lt;/p&gt;
+  );
+}</code></pre>
+
+      <h3>Next.js</h3>
+      <p>
+        <code>instrumentation-client.ts</code> (Next.js 15.3+) runs in the browser before
+        hydration.
+      </p>
+      <pre><code>// lib/network.ts
+import { Freeloader } from "./freeloader.js";
+
+export const network = typeof window === "undefined" ? null : Freeloader.start();</code></pre>
+      <pre><code>// instrumentation-client.ts
+import "./lib/network";</code></pre>
+      <pre><code>// lib/useNetwork.ts
+"use client";
+import { useSyncExternalStore } from "react";
+import { network } from "./network";
+
+const subscribe = (onChange: () =&gt; void) =&gt; network?.subscribe(onChange) ?? (() =&gt; {});
+
+export function useNetwork() {
+  return useSyncExternalStore(subscribe, () =&gt; network?.getEstimate() ?? null, () =&gt; null);
+}</code></pre>
+      <p>
+        <code>useNetwork()</code> returns <code>null</code> during server rendering and hydration.
+        On the Pages Router, import <code>../lib/network</code> at the top of
+        <code>pages/_app.tsx</code> instead.
+      </p>
+
+      <h3>Vue</h3>
+      <pre><code>// src/main.ts
+import "./network";
+import { createApp } from "vue";
+import App from "./App.vue";
+
+createApp(App).mount("#app");</code></pre>
+      <pre><code>// src/useNetwork.ts
+import { onScopeDispose, shallowRef } from "vue";
+import { network } from "./network";
+
+export function useNetwork() {
+  const estimate = shallowRef(network.getEstimate());
+  onScopeDispose(network.subscribe((next) =&gt; (estimate.value = next)));
+  return estimate;
+}</code></pre>
+      <p>On Nuxt, use a client-only plugin instead:</p>
+      <pre><code>// plugins/freeloader.client.ts
+import { Freeloader } from "~/freeloader.js";
+
+export default defineNuxtPlugin(() =&gt; ({ provide: { network: Freeloader.start() } }));</code></pre>
+      <pre><code>const { $network } = useNuxtApp();</code></pre>
+
+      <h3>Svelte and SvelteKit</h3>
+      <pre><code>// src/lib/network.ts
+import { browser } from "$app/environment";
+import { readable } from "svelte/store";
+import { Freeloader } from "./freeloader.js";
+
+export const network = browser ? Freeloader.start() : null;
+
+export const estimate = readable(network?.getEstimate() ?? null, (set) =&gt; network?.subscribe(set));</code></pre>
+      <pre><code>// src/hooks.client.ts
+import "$lib/network";</code></pre>
+      <pre><code>&lt;p&gt;{$estimate?.download.megabitsPerSecond ?? "—"} Mbps&lt;/p&gt;</code></pre>
+      <p>
+        Without SvelteKit, drop the <code>browser</code> check and import
+        <code>./lib/network</code> in <code>main.ts</code>.
+      </p>
+
+      <h3>Angular</h3>
+      <pre><code>// src/main.ts
+import "./network";
+import { bootstrapApplication } from "@angular/platform-browser";
+import { AppComponent } from "./app/app.component";
+import { appConfig } from "./app/app.config";
+
+bootstrapApplication(AppComponent, appConfig);</code></pre>
+      <pre><code>// src/app/network.service.ts
+import { Injectable, signal } from "@angular/core";
+import { network } from "../network";
+
+@Injectable({ providedIn: "root" })
+export class NetworkService {
+  readonly estimate = signal(network.getEstimate());
+
+  constructor() {
+    network.subscribe((next) =&gt; this.estimate.set(next));
+  }
+}</code></pre>
+      <p>With server-side rendering, use the <code>typeof window</code> check from the Next.js example.</p>
+
+      <h2>Reading the estimate</h2>
+      <pre><code>const freeloader = Freeloader.start();
+
+const { download, upload, latency } = freeloader.getEstimate();
+
+const unsubscribe = freeloader.subscribe((estimate) =&gt; {
+  console.log(estimate.download.megabitsPerSecond, estimate.latency.roundTripMilliseconds);
+});</code></pre>
+      <p>
+        <code>getEstimate()</code> is cheap, because the estimate is recalculated when new data
+        arrives, not when you read it. Every figure can be <code>null</code> until the page has
+        seen enough traffic, so always handle that case.
+      </p>
+
+      <h3>What the fields mean</h3>
+      <div class="scroll">
+        <table>
+          <thead>
+            <tr><th>Field</th><th>Meaning</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><code>download.bitsPerSecond</code> / <code>.megabitsPerSecond</code></td><td>The estimate. The link is at least this fast.</td></tr>
+            <tr><td><code>download.averageBitsPerSecond</code></td><td>Weighted mean of what was seen. It sits below <code>bitsPerSecond</code> on purpose.</td></tr>
+            <tr><td><code>download.peakBitsPerSecond</code></td><td>The fastest single burst.</td></tr>
+            <tr><td><code>download.regressionBitsPerSecond</code></td><td>Rate from fitting duration against size across transfers.</td></tr>
+            <tr><td><code>download.resources</code></td><td>How many resources the estimate is built from. Resources downloaded in parallel count individually. <code>upload</code> and <code>latency</code> have the same field.</td></tr>
+            <tr><td><code>download.confidence</code></td><td><code>score</code> (0–1), <code>samples</code>, <code>bytes</code>, <code>spread</code>.</td></tr>
+            <tr><td><code>upload.*</code></td><td>Same shape as download. It stays <code>null</code> until the page sends a request body.</td></tr>
+            <tr><td><code>latency.roundTripMilliseconds</code></td><td>Lowest round trip seen, in milliseconds.</td></tr>
+            <tr><td><code>latency.timeToFirstByteMilliseconds</code></td><td>Median time to first byte.</td></tr>
+            <tr><td><code>latency.jitterMilliseconds</code></td><td>How much time to first byte varies, measured only while the link was quiet.</td></tr>
+            <tr><td><code>updatedAt</code></td><td>Epoch milliseconds of the newest sample.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p class="small muted">
+        Treat a figure with low confidence as a floor ("at least this fast"), not as a
+        measurement. Passive samples only ever make a link look slower than it is.
+      </p>
+
+      <h2>Common tasks</h2>
+
+      <h3>Pick a video or image quality</h3>
+      <pre><code>function pickRendition() {
+  const { download } = freeloader.getEstimate();
+  if (download.bitsPerSecond === null || download.confidence.score &lt; 0.3) return "720p";
+  if (download.megabitsPerSecond &gt;= 25) return "2160p";
+  if (download.megabitsPerSecond &gt;= 8) return "1080p";
+  return "480p";
+}</code></pre>
+
+      <h3>Show the numbers in your UI</h3>
+      <p>The package exports the formatters this demo uses:</p>
+      <pre><code>import { formatBitsPerSecond, formatMilliseconds, formatBytes } from "./freeloader.js";
+
+formatBitsPerSecond(42_300_000);   // "42.3 Mbps"
+formatMilliseconds(18.4);          // "18 ms"
+formatBytes(3_400_000);  // "3.4 MB"
+formatBitsPerSecond(null);         // "—"</code></pre>
+
+      <h3>Measure only your own origins</h3>
+      <pre><code>Freeloader.start({
+  origins: [location.origin, "https://cdn.example.com"],
+});</code></pre>
+      <p>
+        Transfers from other origins are counted as <code>foreign-origin</code> in
+        <code>debug().skipped</code> and ignored. Assets on a different origin are only
+        measurable if that origin sends a <code>Timing-Allow-Origin</code> header. Without it the
+        browser hides the timings, so add it to your CDN:
+      </p>
+      <pre><code>Timing-Allow-Origin: https://www.example.com</code></pre>
+
+      <h3>Leave <code>fetch</code> and <code>XMLHttpRequest</code> alone</h3>
+      <pre><code>Freeloader.start({ instrumentUploads: false });</code></pre>
+      <p>
+        By default the library wraps <code>fetch</code> and <code>XMLHttpRequest</code> to time
+        request bodies. It never reads or copies the body, only its size, and bodies under 4 KB
+        are ignored. Turn this off if you already wrap those APIs, and there will be no upload
+        figure.
+      </p>
+
+      <h3>Keep nothing between page views</h3>
+      <pre><code>Freeloader.start({ persist: false });</code></pre>
+      <p>
+        The estimate starts from zero on every load and nothing is written to
+        <code>localStorage</code>. By default one key, <code>freeloader</code>, holds the
+        estimate for up to seven days.
+      </p>
+
+      <h3>Run several independent estimators</h3>
+      <pre><code>const pageEstimate = Freeloader.start({ storageKey: "myapp:network" });</code></pre>
+      <p>Give each one its own <code>storageKey</code> so they don't overwrite each other.</p>
+
+      <h3>Let the user clear it</h3>
+      <pre><code>resetButton.onclick = () =&gt; freeloader.reset();</code></pre>
+      <p>This also deletes the stored copy.</p>
+
+      <h2>Options</h2>
+      <p>
+        Pass these to <code>Freeloader.start(options)</code> or
+        <code>new Freeloader(options)</code>. Every option is optional.
+      </p>
+      <div class="scroll">
+        <table>
+          <thead>
+            <tr><th>Option</th><th>Default</th><th>What it does, and when to change it</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>storageKey</code></td><td><code>"freeloader"</code></td>
+              <td>The <code>localStorage</code> key. Change it to keep separate estimates apart.</td>
+            </tr>
+            <tr>
+              <td><code>persist</code></td><td><code>true</code></td>
+              <td>Keep the estimate across page views. Set to <code>false</code> to store nothing.</td>
+            </tr>
+            <tr>
+              <td><code>maximumAgeMilliseconds</code></td><td>7 days</td>
+              <td>Stored state older than this is thrown away on load.</td>
+            </tr>
+            <tr>
+              <td><code>halfLifeMilliseconds</code></td><td>24 hours</td>
+              <td>
+                A sample's weight halves every this long. Shorten it for users who move between
+                networks a lot.
+              </td>
+            </tr>
+            <tr>
+              <td><code>minimumSampleBytes</code></td><td>32768</td>
+              <td>
+                Transfers smaller than this are ignored for download and upload speed, but still
+                count for latency. Lower it only if your pages are made entirely of small files.
+              </td>
+            </tr>
+            <tr>
+              <td><code>quantile</code></td><td><code>0.9</code></td>
+              <td>
+                Where in the sample distribution the estimate is read. Lower values are more
+                conservative.
+              </td>
+            </tr>
+            <tr>
+              <td><code>maximumSamples</code></td><td>100</td>
+              <td>Throughput samples kept for each direction. The fastest one is kept when old samples are dropped.</td>
+            </tr>
+            <tr>
+              <td><code>maximumLatencySamples</code></td><td>100</td>
+              <td>Latency samples kept.</td>
+            </tr>
+            <tr>
+              <td><code>mergeBursts</code></td><td><code>true</code></td>
+              <td>
+                Merge transfers that overlap in time and measure them together. Turning this off
+                makes parallel downloads read slow.
+              </td>
+            </tr>
+            <tr>
+              <td><code>burstGapMilliseconds</code></td><td>30</td>
+              <td>A gap this short between transfers still counts as one burst.</td>
+            </tr>
+            <tr>
+              <td><code>slowStartCorrection</code></td><td><code>1</code></td>
+              <td>
+                How much of TCP slow start to subtract, from 0 to 1. Lower it if your traffic
+                mostly uses connections that are already open.
+              </td>
+            </tr>
+            <tr>
+              <td><code>instrumentUploads</code></td><td><code>true</code></td>
+              <td>Wrap <code>fetch</code> and <code>XMLHttpRequest</code> to time request bodies.</td>
+            </tr>
+            <tr>
+              <td><code>origins</code></td><td>every origin</td>
+              <td>Only observe transfers from these origins, for example <code>["https://cdn.example.com"]</code>.</td>
+            </tr>
+            <tr>
+              <td><code>onUpdate</code></td><td>—</td>
+              <td>Called with the new estimate on every change. Works like <code>subscribe()</code>, set at construction time.</td>
+            </tr>
+            <tr>
+              <td><code>now</code></td><td><code>Date.now</code></td>
+              <td>Clock in epoch milliseconds. For tests.</td>
+            </tr>
+            <tr>
+              <td><code>timeOrigin</code></td><td><code>performance.timeOrigin</code></td>
+              <td>The epoch millisecond the performance clock starts at. For tests.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h2>API</h2>
+      <div class="scroll">
+        <table>
+          <thead>
+            <tr><th>Call</th><th>What it does</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><code>Freeloader.start(options?)</code></td><td>Create an instance and start observing.</td></tr>
+            <tr><td><code>new Freeloader(options?, storage?)</code></td><td>Create an instance without starting it. <code>storage</code> replaces <code>localStorage</code>; pass <code>null</code> to use no storage.</td></tr>
+            <tr><td><code>.start()</code></td><td>Start observing. A second call does nothing.</td></tr>
+            <tr><td><code>.stop()</code></td><td>Stop observing, un-patch <code>fetch</code> and <code>XMLHttpRequest</code>, and save state.</td></tr>
+            <tr><td><code>.isRunning</code></td><td>Whether it is observing.</td></tr>
+            <tr><td><code>.getEstimate()</code></td><td>The current estimate.</td></tr>
+            <tr><td><code>.subscribe(fn)</code></td><td>Call <code>fn</code> on every change. Returns an unsubscribe function.</td></tr>
+            <tr><td><code>.reset()</code></td><td>Forget everything, including the stored copy.</td></tr>
+            <tr><td><code>.debug()</code></td><td>Sample counts, totals, recent samples, and why entries were skipped.</td></tr>
+            <tr><td><code>.ingest(entry)</code></td><td>Add a performance entry by hand.</td></tr>
+            <tr><td><code>.flush(nowPerf?)</code></td><td>Process buffered entries now instead of waiting.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h2>Debugging a low or missing figure</h2>
+      <p>
+        Open the console and run <code>freeloader.debug()</code> on any page of this demo (the
+        instance is on <code>window.freeloader</code>), or open the
+        <a href="network.html">Network</a> page. <code>skipped</code> counts every entry that was
+        ignored, by reason:
+      </p>
+      <div class="scroll">
+        <table>
+          <thead>
+            <tr><th>Reason</th><th>What it means</th><th>What to do</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>cache-hit</code></td>
+              <td>Served from the browser cache, so nothing crossed the network.</td>
+              <td>Nothing. Repeat visits are expected to be quiet.</td>
+            </tr>
+            <tr>
+              <td><code>no-transfer-size</code></td>
+              <td>The browser reported no size for the transfer.</td>
+              <td>Usually a cross-origin asset. Send <code>Timing-Allow-Origin</code> from that origin.</td>
+            </tr>
+            <tr>
+              <td><code>opaque-timings</code></td>
+              <td>The browser hid the timestamps.</td>
+              <td>Same fix: send <code>Timing-Allow-Origin</code>.</td>
+            </tr>
+            <tr>
+              <td><code>window-too-short</code></td>
+              <td>The transfer finished too fast to time. It still gives a latency sample.</td>
+              <td>Nothing. Tiny files can't reveal bandwidth.</td>
+            </tr>
+            <tr>
+              <td><code>foreign-origin</code></td>
+              <td>The origin isn't in your <code>origins</code> list.</td>
+              <td>Add it to the list if you want it counted.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p>If confidence stays low, the page probably moved too few large transfers. Things to check:</p>
+      <ul>
+        <li>The page moves at least a few files over 32 KB. Light pages like <a href="about.html">About</a> stay low on purpose.</li>
+        <li>Upload is <code>null</code>: nothing has sent a request body of 4 KB or more yet.</li>
+      </ul>
+
+      <h2>Testing code that uses it</h2>
+      <p>
+        Pass fixed clocks and <code>null</code> storage, add entries by hand, and flush on your
+        own clock. Nothing depends on a real network.
+      </p>
+      <pre><code>import { Freeloader } from "./freeloader.js";
+
+let clock = 0;
+const freeloader = new Freeloader(
+  { now: () =&gt; 1_700_000_000_000 + clock, timeOrigin: 1_700_000_000_000, instrumentUploads: false },
+  null,
+);
+
+freeloader.ingest({
+  name: "https://example.com/hero.jpg",
+  entryType: "resource",
+  startTime: 0, duration: 240, requestStart: 10,
+  responseStart: 40, responseEnd: 240,
+  transferSize: 500_000, encodedBodySize: 499_700,
+});
+clock = 1000;
+freeloader.flush(clock);
+console.log(freeloader.getEstimate().download.megabitsPerSecond);</code></pre>
+
+      <h2>Browser support</h2>
+      <p>
+        All modern browsers are supported: Chrome, Edge, Firefox and Safari, on desktop and mobile.
+      </p>
+      <p>
+        Outside a browser, for example during server-side rendering, starting it is safe. It
+        observes nothing and the estimate stays empty.
+      </p>
+    </main>
+  </body>
+</html>

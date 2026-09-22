@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Debug — Freeloader demo</title>
+    <link rel="stylesheet" href="css/site.css" />
+    <script type="module" src="js/boot.js"></script>
+  </head>
+  <body>
+    <header class="site">
+      <div class="inner">
+        <a class="brand" href="index.html">free<span>loader</span></a>
+        <nav class="site">
+          <a href="index.html">Home</a>
+          <a href="gallery.html">Gallery</a>
+          <a href="media.html">Media</a>
+          <a href="app.html">Dashboard</a>
+          <a href="about.html">About</a>
+          <a href="usage.html">Usage</a>
+          <a href="network.html">Network</a>
+          <a href="speedtest.html">Speed test</a>
+          <a href="debug.html">Debug</a>
+        </nav>
+      </div>
+    </header>
+
+    <div class="metrics" id="freeloader-metrics">
+      <div class="metric">
+        <div class="label">Average download</div>
+        <div class="value" data-metric="download-average">—</div>
+        <div class="sub" data-metric="download-average-detail">&nbsp;</div>
+      </div>
+      <div class="metric">
+        <div class="label">Peak download</div>
+        <div class="value" data-metric="download-peak">—</div>
+        <div class="sub" data-metric="download-peak-detail">&nbsp;</div>
+      </div>
+      <div class="metric">
+        <div class="label">Average upload</div>
+        <div class="value" data-metric="upload-average">—</div>
+        <div class="sub" data-metric="upload-average-detail">&nbsp;</div>
+      </div>
+      <div class="metric">
+        <div class="label">Peak upload</div>
+        <div class="value" data-metric="upload-peak">—</div>
+        <div class="sub" data-metric="upload-peak-detail">&nbsp;</div>
+      </div>
+      <div class="metric">
+        <div class="label">Latency</div>
+        <div class="value" data-metric="round-trip">—</div>
+        <div class="sub" data-metric="round-trip-detail">&nbsp;</div>
+      </div>
+    </div>
+
+    <main>
+      <h1>Debug</h1>
+      <p class="lede">
+        Every page of the demo records what was downloaded and uploaded, so browse around and come
+        back. Scroll over a chart to zoom, drag to pan, and hover a hump for the file.
+      </p>
+      <div class="row" style="margin-bottom: 16px">
+        <button id="traffic">Download a file</button>
+        <button id="upload">Upload 2 MB</button>
+        <button id="live">Last 2 minutes</button>
+        <button id="clear">Clear history</button>
+        <span class="small muted" id="traffic-status"></span>
+      </div>
+
+      <section class="card chart" data-series="download">
+        <h2>Download <span class="value"></span></h2>
+        <p class="small muted legend">
+          One hump per file, stacked, so the top edge is the total. The dashed line is
+          Freeloader's estimate.
+          <span class="type-navigation">page</span>
+          <span class="type-script">script</span>
+          <span class="type-css">css</span>
+          <span class="type-img">image</span>
+          <span class="type-fetch">fetch/xhr</span>
+          <span class="type-other">other</span>
+        </p>
+        <svg role="img" aria-label="Download speed per file, stacked, over time"></svg>
+      </section>
+      <section class="card chart" data-series="upload">
+        <h2>Upload <span class="value"></span></h2>
+        <p class="small muted legend">
+          One hump per upload Freeloader timed, stacked. Browsers don't time uploads themselves, so
+          these are Freeloader's own measurements. The dashed line is its estimate.
+        </p>
+        <svg role="img" aria-label="Upload speed per request, stacked, over time"></svg>
+      </section>
+    </main>
+
+    <script type="module" src="js/debug.js"></script>
+  </body>
+</html>

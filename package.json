@@ -1,0 +1,49 @@
+{
+  "name": "freeloader",
+  "version": "1.0.3",
+  "description": "Zero-dependency, zero-weight passive network speed estimation from ordinary page traffic.",
+  "homepage": "https://github.com/SamKirkland/FreeLoader#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/SamKirkland/FreeLoader.git"
+  },
+  "bugs": {
+    "url": "https://github.com/SamKirkland/FreeLoader/issues"
+  },
+  "author": "Sam Kirkland",
+  "type": "module",
+  "main": "./dist/freeloader.js",
+  "types": "./dist/freeloader.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/freeloader.d.ts",
+      "default": "./dist/freeloader.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "node tools/build.mjs",
+    "build:site": "npm run build && node tools/copy-lib-to-site.mjs && node tools/gen-manifest.mjs",
+    "manifest": "node tools/gen-manifest.mjs",
+    "assets": "node tools/gen-assets.mjs",
+    "serve": "node tools/dev-server.mjs",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "keywords": [
+    "speedtest",
+    "bandwidth",
+    "rtt",
+    "jitter",
+    "passive",
+    "resource-timing"
+  ],
+  "license": "MIT",
+  "devDependencies": {
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.8"
+  }
+}

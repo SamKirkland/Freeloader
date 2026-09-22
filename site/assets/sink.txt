@@ -1,0 +1,8 @@
+A POST target, and nothing else.
+
+Measuring an upload needs somewhere to send bytes, but it does not need anything
+to accept them: the browser reports the body going out over the wire whatever
+the server answers, so a static host refusing the request with 405 is a perfectly
+good answer. This file exists so that refusal happens at a path that says why.
+
+Nothing reads what is posted here. Nothing could.
