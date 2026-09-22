@@ -1,15 +1,14 @@
 # Freeloader
 Passive network speed test for the browser.
-No dependencies. 20KB Gzipped.
+No dependencies. 20KB gzipped.
 
 
-The traditional form of running a speed test downloads and uploads a series of large files in parallel 
-while measuring the speeds. This consumes the users data cap and slows down the rest of the page.
-Traditional tests take 1-2 minutes.
+The traditional way of running a speed test downloads and uploads a series of large files in parallel 
+while measuring the speeds. This consumes the user's data cap and slows down the rest of the page. Traditional tests also take 1-2 minutes.
 
-Freeloader takes a different approach, start Freeloader right away and Freeloader monitors **existing** network
-request you website is already making such as images, styles, scripts, video, and API calls. 
-As the user uses your website the estimated speed gets more accurate. But is already within 20% of a full speed test by the time the home page is done loading. Freeloader ties into browser APIs for resource timings so it doesn't use any extra resources or slow down your page load besdies the modest additional 20KB script size.
+Freeloader takes a different approach. Freeloader monitors **existing** network
+request that your website is already making such as images, styles, scripts, video, and API calls. 
+As the user uses your website, the estimated speed gets more accurate. In my tests Freeloader can estimate your connection speed to within 20% of a traditional speed test by the time the home page finishes loading. Freeloader ties into browser APIs for resource timings so it doesn't use any extra resources or slow down your page load besides the modest additional 20KB script size.
 
 ## Install
 
