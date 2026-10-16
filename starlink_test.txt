@@ -1,0 +1,6 @@
+
+# this is a test of github secret scanning
+# https://docs.github.com/en/code-security/concepts/secret-security/secret-scanning
+# this secret is NOT real (it has 0 permissions)
+STARLINK_SECRET=spx_df_wXGY5BHsODT-J2OO1-B22jnGMMOKnyMRBBYcnC_enq8DB5Ru
+

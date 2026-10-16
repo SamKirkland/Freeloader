@@ -30,14 +30,11 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
 
       - run: npm ci
 
-      # The demo is the library's shop window; shipping it broken is worse than
-      # not shipping it. A failure here stops the deploy and leaves the current
-      # site up.
       - run: npm test
       - run: npm run typecheck
 
@@ -54,12 +51,6 @@ jobs:
           test -f site/assets/manifest.json
           test -f site/.nojekyll
           test "$(find site/assets/generated -type f | wc -l)" -gt 0
-
-      # `enablement` turns Pages on for the repository if it is not already on,
-      # so a fresh clone of this repo deploys without anyone visiting Settings.
-      - uses: actions/configure-pages@v5
-        with:
-          enablement: true
 
       - uses: actions/upload-pages-artifact@v3
         with:
