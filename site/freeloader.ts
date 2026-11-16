@@ -111,6 +111,30 @@ export interface NetworkEstimate {
   updatedAt: number;
 }
 
+/**
+ * One way of naming a URL that should be left out of the measurement.
+ *
+ * A bare string matches by substring, unless it contains `*`, in which case it
+ * is a glob matched against the whole candidate (`*` stands for any run of
+ * characters; nothing else is special, so a `?` in a query string is just a
+ * `?`). The tagged forms say exactly which comparison is meant, and a RegExp
+ * or a predicate covers whatever the tags do not.
+ *
+ * Patterns are tried against the URL as the browser reported it, its absolute
+ * form, and its path with query string - so `{ exact: "/assets/sink.txt" }`
+ * matches a request the page made to `https://example.com/assets/sink.txt`.
+ */
+export type UrlPattern =
+  | string
+  | RegExp
+  | ((url: string) => boolean)
+  | { exact: string }
+  | { includes: string }
+  | { startsWith: string }
+  | { endsWith: string }
+  | { glob: string }
+  | { regex: string; flags?: string };
+
 export interface FreeloaderOptions {
   /** localStorage key. Default `freeloader`. */
   storageKey?: string;
@@ -142,6 +166,17 @@ export interface FreeloaderOptions {
   instrumentUploads?: boolean;
   /** Only observe these origins. Default: every origin the page already talks to. */
   origins?: string[];
+  /**
+   * URLs to leave out entirely, as substrings, globs, regexes, predicates or
+   * tagged matchers; see `UrlPattern`. Default: nothing is ignored.
+   *
+   * A matching transfer contributes nothing - not throughput, not latency, not
+   * the byte totals - and is counted as `ignored` in `debug().skipped`.
+   * Uploads are matched too, so an active speed test, a background sync or a
+   * large upload of your own can be kept out of a measurement that is meant to
+   * describe ordinary page traffic.
+   */
+  ignore?: UrlPattern[];
   /** Called whenever the estimate changes. */
   onUpdate?: (estimate: NetworkEstimate) => void;
   /** Epoch-millisecond clock. Defaults to `Date.now`; override in tests. */
@@ -528,6 +563,76 @@ function clearState(storage: StorageLike | null, key: string): void {
   }
 }
 
+/** A glob where only `*` is special, anchored to the whole candidate. */
+function globToRegExp(glob: string): RegExp {
+  const literal = glob.split("*").map((part) => part.replace(/[.+?^${}()|[\]\\]/g, (ch) => "\\" + ch));
+  return new RegExp("^" + literal.join("[\\s\\S]*") + "$");
+}
+
+/** Drop `g` and `y`, which make `test` stateful and so match every other try. */
+function statelessRegExp(source: string, flags: string): RegExp {
+  return new RegExp(source, flags.replace(/[gy]/g, ""));
+}
+
+/**
+ * Turn one pattern into a test against a single string. Compiled once, when the
+ * instance is constructed, rather than per entry.
+ */
+function compileUrlPattern(pattern: UrlPattern): (candidate: string) => boolean {
+  if (typeof pattern === "function") return (candidate) => pattern(candidate) === true;
+  if (pattern instanceof RegExp) {
+    const regex = statelessRegExp(pattern.source, pattern.flags);
+    return (candidate) => regex.test(candidate);
+  }
+  if (typeof pattern === "string") {
+    if (!pattern.includes("*")) return (candidate) => candidate.includes(pattern);
+    const regex = globToRegExp(pattern);
+    return (candidate) => regex.test(candidate);
+  }
+  if ("exact" in pattern) return (candidate) => candidate === pattern.exact;
+  if ("includes" in pattern) return (candidate) => candidate.includes(pattern.includes);
+  if ("startsWith" in pattern) return (candidate) => candidate.startsWith(pattern.startsWith);
+  if ("endsWith" in pattern) return (candidate) => candidate.endsWith(pattern.endsWith);
+  if ("glob" in pattern) {
+    const regex = globToRegExp(pattern.glob);
+    return (candidate) => regex.test(candidate);
+  }
+  if ("regex" in pattern) {
+    const regex = statelessRegExp(pattern.regex, pattern.flags ?? "");
+    return (candidate) => regex.test(candidate);
+  }
+  return () => false;
+}
+
+/**
+ * The strings a pattern is tried against: the URL as it was reported, its
+ * absolute form, and its path with query string. The last is what lets a
+ * path-shaped pattern match a request the browser reported absolutely.
+ */
+function urlCandidates(url: string): string[] {
+  const candidates = [url];
+  try {
+    const base = globalThis.location?.href ?? "http://localhost";
+    const parsed = new URL(url, base);
+    if (parsed.href !== url) candidates.push(parsed.href);
+    const path = `${parsed.pathname}${parsed.search}`;
+    if (path !== url) candidates.push(path);
+  } catch {
+    // Not a URL we can parse; the raw string is all there is to match on.
+  }
+  return candidates;
+}
+
+/** Compile an `ignore` list into one predicate over a URL. */
+function compileIgnoreList(patterns: UrlPattern[] | undefined): (url: string) => boolean {
+  if (!patterns || patterns.length === 0) return () => false;
+  const matchers = patterns.map(compileUrlPattern);
+  return (url) => {
+    const candidates = urlCandidates(url);
+    return matchers.some((matches) => candidates.some((candidate) => matches(candidate)));
+  };
+}
+
 /**
  * The parts of PerformanceResourceTiming we read. Declared structurally so the
  * parsing logic can be exercised without a browser.
@@ -799,6 +904,13 @@ function utf8Length(value: string): number {
   return bytes;
 }
 
+/** The URL a `fetch` call was aimed at, whichever of its three shapes was used. */
+function requestUrl(input: RequestInfo | URL): string {
+  if (typeof input === "string") return input;
+  if (input instanceof URL) return input.href;
+  return typeof input?.url === "string" ? input.url : "";
+}
+
 interface UploadHost {
   fetch?: typeof fetch;
   XMLHttpRequest?: typeof XMLHttpRequest;
@@ -813,6 +925,8 @@ interface UploadInstrumentationOptions {
   epochNow?: () => number;
   /** Bodies smaller than this are not worth timing. Default 4096. */
   minimumBytes?: number;
+  /** Returns true for request URLs that should not be timed at all. */
+  shouldIgnore?: (url: string) => boolean;
 }
 
 /**
@@ -837,6 +951,12 @@ function installUploadInstrumentation(
   const now = options.now ?? (() => performance.now());
   const epochNow = options.epochNow ?? (() => Date.now());
   const minimumBytes = options.minimumBytes ?? 4096;
+  const shouldIgnore = options.shouldIgnore ?? (() => false);
+  /**
+   * Where each in-flight XMLHttpRequest was opened to. Kept outside the object
+   * so that nothing is added to a host's own requests.
+   */
+  const xhrUrls = new WeakMap<XMLHttpRequest, string>();
   const undo: (() => void)[] = [];
   let active = true;
 
@@ -860,13 +980,42 @@ function installUploadInstrumentation(
 
   if (typeof host.XMLHttpRequest === "function") {
     const Original = host.XMLHttpRequest;
+    const originalOpen = Original.prototype.open;
     const originalSend = Original.prototype.send;
+
+    // `open` is where the URL is given, and the only place to read it from.
+    if (typeof originalOpen === "function") {
+      Original.prototype.open = function patchedOpen(
+        this: XMLHttpRequest,
+        method: string,
+        url: string | URL,
+        ...rest: unknown[]
+      ): void {
+        try {
+          xhrUrls.set(this, typeof url === "string" ? url : String(url));
+        } catch {
+          // A frozen or exotic object; the request is simply not tracked.
+        }
+        return (originalOpen as (this: XMLHttpRequest, ...args: unknown[]) => void).call(
+          this,
+          method,
+          url,
+          ...rest,
+        );
+      } as typeof originalOpen;
+
+      const patchedOpen = Original.prototype.open;
+      undo.push(() => {
+        if (Original.prototype.open === patchedOpen) Original.prototype.open = originalOpen;
+      });
+    }
 
     Original.prototype.send = function patchedSend(
       this: XMLHttpRequest,
       body?: Document | XMLHttpRequestBodyInit | null,
     ): void {
-      const bytes = active ? measureBodySize(body) : null;
+      const url = xhrUrls.get(this);
+      const bytes = active && !(url !== undefined && shouldIgnore(url)) ? measureBodySize(body) : null;
       if (bytes !== null && bytes >= minimumBytes && this.upload) {
         let started = now();
         const onStart = (): void => {
@@ -905,7 +1054,7 @@ function installUploadInstrumentation(
       input: RequestInfo | URL,
       init?: RequestInit,
     ): Promise<Response> {
-      const bytes = active ? measureBodySize(init?.body) : null;
+      const bytes = active && !shouldIgnore(requestUrl(input)) ? measureBodySize(init?.body) : null;
       if (bytes === null || bytes < minimumBytes) {
         return originalFetch.call(host as unknown as typeof globalThis, input, init);
       }
@@ -1257,9 +1406,9 @@ const DEFAULTS = {
 const SETTLE_MS = 60_000;
 
 type ResolvedOptions = Required<
-  Omit<FreeloaderOptions, "origins" | "onUpdate" | "now" | "timeOrigin">
+  Omit<FreeloaderOptions, "origins" | "ignore" | "onUpdate" | "now" | "timeOrigin">
 > &
-  Pick<FreeloaderOptions, "origins" | "onUpdate" | "now" | "timeOrigin">;
+  Pick<FreeloaderOptions, "origins" | "ignore" | "onUpdate" | "now" | "timeOrigin">;
 
 export interface FreeloaderDebug {
   running: boolean;
@@ -1296,6 +1445,8 @@ export class Freeloader {
   private readonly aggregator: BurstAggregator;
   private readonly listeners = new Set<(estimate: NetworkEstimate) => void>();
   private readonly skipped: Record<string, number> = {};
+  /** The `ignore` option, compiled once. */
+  private readonly isIgnored: (url: string) => boolean;
 
   /** Latency observations awaiting a contention verdict. */
   private pendingLatency: { sample: Omit<LatencySample, "contended">; start: number; end: number }[] = [];
@@ -1329,6 +1480,7 @@ export class Freeloader {
 
   constructor(options: FreeloaderOptions = {}, storage?: StorageLike | null) {
     this.options = { ...DEFAULTS, ...options };
+    this.isIgnored = compileIgnoreList(this.options.ignore);
     this.storage = storage !== undefined ? storage : this.options.persist ? defaultStorage() : null;
 
     const now = this.now();
@@ -1382,6 +1534,11 @@ export class Freeloader {
         onSample: (sample) => this.addUploadSample(sample),
         getRoundTripMilliseconds: () => this.estimate.latency.roundTripMilliseconds,
         minimumBytes: 4096,
+        shouldIgnore: (url) => {
+          if (!this.isIgnored(url)) return false;
+          this.skipped["ignored"] = (this.skipped["ignored"] ?? 0) + 1;
+          return true;
+        },
       });
     }
   }
@@ -1472,6 +1629,10 @@ export class Freeloader {
    * themselves.
    */
   ingest(entry: TimingEntryLike): void {
+    if (this.isIgnored(entry.name)) {
+      this.skipped["ignored"] = (this.skipped["ignored"] ?? 0) + 1;
+      return;
+    }
     if (!this.matchesOrigin(entry.name)) {
       this.skipped["foreign-origin"] = (this.skipped["foreign-origin"] ?? 0) + 1;
       return;

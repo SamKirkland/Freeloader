@@ -12,7 +12,14 @@
  */
 import { Freeloader, formatBitsPerSecond, formatMilliseconds } from "../freeloader.js";
 
-const freeloader = Freeloader.start({ storageKey: "freeloader:demo" });
+const freeloader = Freeloader.start({
+  storageKey: "freeloader:demo",
+  // The active speed test saturates the link on purpose, so its own traffic
+  // would drown out the passive estimate of ordinary page traffic. Every one of
+  // its downloads is cache-busted with `?speedtest=<token>`, and it uploads to
+  // one fixed path.
+  ignore: [{ includes: "?speedtest=" }, { endsWith: "/assets/sink.txt" }],
+});
 
 // Exposed so the other demo pages (and the browser console) can read it.
 window.freeloader = freeloader;

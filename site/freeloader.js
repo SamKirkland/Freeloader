@@ -329,6 +329,81 @@ function clearState(storage, key) {
         /* nothing to do */
     }
 }
+/** A glob where only `*` is special, anchored to the whole candidate. */
+function globToRegExp(glob) {
+    const literal = glob.split("*").map((part) => part.replace(/[.+?^${}()|[\]\\]/g, (ch) => "\\" + ch));
+    return new RegExp("^" + literal.join("[\\s\\S]*") + "$");
+}
+/** Drop `g` and `y`, which make `test` stateful and so match every other try. */
+function statelessRegExp(source, flags) {
+    return new RegExp(source, flags.replace(/[gy]/g, ""));
+}
+/**
+ * Turn one pattern into a test against a single string. Compiled once, when the
+ * instance is constructed, rather than per entry.
+ */
+function compileUrlPattern(pattern) {
+    if (typeof pattern === "function")
+        return (candidate) => pattern(candidate) === true;
+    if (pattern instanceof RegExp) {
+        const regex = statelessRegExp(pattern.source, pattern.flags);
+        return (candidate) => regex.test(candidate);
+    }
+    if (typeof pattern === "string") {
+        if (!pattern.includes("*"))
+            return (candidate) => candidate.includes(pattern);
+        const regex = globToRegExp(pattern);
+        return (candidate) => regex.test(candidate);
+    }
+    if ("exact" in pattern)
+        return (candidate) => candidate === pattern.exact;
+    if ("includes" in pattern)
+        return (candidate) => candidate.includes(pattern.includes);
+    if ("startsWith" in pattern)
+        return (candidate) => candidate.startsWith(pattern.startsWith);
+    if ("endsWith" in pattern)
+        return (candidate) => candidate.endsWith(pattern.endsWith);
+    if ("glob" in pattern) {
+        const regex = globToRegExp(pattern.glob);
+        return (candidate) => regex.test(candidate);
+    }
+    if ("regex" in pattern) {
+        const regex = statelessRegExp(pattern.regex, pattern.flags ?? "");
+        return (candidate) => regex.test(candidate);
+    }
+    return () => false;
+}
+/**
+ * The strings a pattern is tried against: the URL as it was reported, its
+ * absolute form, and its path with query string. The last is what lets a
+ * path-shaped pattern match a request the browser reported absolutely.
+ */
+function urlCandidates(url) {
+    const candidates = [url];
+    try {
+        const base = globalThis.location?.href ?? "http://localhost";
+        const parsed = new URL(url, base);
+        if (parsed.href !== url)
+            candidates.push(parsed.href);
+        const path = `${parsed.pathname}${parsed.search}`;
+        if (path !== url)
+            candidates.push(path);
+    }
+    catch {
+        // Not a URL we can parse; the raw string is all there is to match on.
+    }
+    return candidates;
+}
+/** Compile an `ignore` list into one predicate over a URL. */
+function compileIgnoreList(patterns) {
+    if (!patterns || patterns.length === 0)
+        return () => false;
+    const matchers = patterns.map(compileUrlPattern);
+    return (url) => {
+        const candidates = urlCandidates(url);
+        return matchers.some((matches) => candidates.some((candidate) => matches(candidate)));
+    };
+}
 /** Below this, timer resolution and header overhead swamp the measurement. */
 const MIN_WINDOW_MS = 2;
 /**
@@ -534,6 +609,14 @@ function utf8Length(value) {
     }
     return bytes;
 }
+/** The URL a `fetch` call was aimed at, whichever of its three shapes was used. */
+function requestUrl(input) {
+    if (typeof input === "string")
+        return input;
+    if (input instanceof URL)
+        return input.href;
+    return typeof input?.url === "string" ? input.url : "";
+}
 /**
  * Time request bodies as the page sends them.
  *
@@ -553,6 +636,12 @@ function installUploadInstrumentation(host, options) {
     const now = options.now ?? (() => performance.now());
     const epochNow = options.epochNow ?? (() => Date.now());
     const minimumBytes = options.minimumBytes ?? 4096;
+    const shouldIgnore = options.shouldIgnore ?? (() => false);
+    /**
+     * Where each in-flight XMLHttpRequest was opened to. Kept outside the object
+     * so that nothing is added to a host's own requests.
+     */
+    const xhrUrls = new WeakMap();
     const undo = [];
     let active = true;
     const emit = (bytes, durationMilliseconds, source) => {
@@ -576,9 +665,28 @@ function installUploadInstrumentation(host, options) {
     };
     if (typeof host.XMLHttpRequest === "function") {
         const Original = host.XMLHttpRequest;
+        const originalOpen = Original.prototype.open;
         const originalSend = Original.prototype.send;
+        // `open` is where the URL is given, and the only place to read it from.
+        if (typeof originalOpen === "function") {
+            Original.prototype.open = function patchedOpen(method, url, ...rest) {
+                try {
+                    xhrUrls.set(this, typeof url === "string" ? url : String(url));
+                }
+                catch {
+                    // A frozen or exotic object; the request is simply not tracked.
+                }
+                return originalOpen.call(this, method, url, ...rest);
+            };
+            const patchedOpen = Original.prototype.open;
+            undo.push(() => {
+                if (Original.prototype.open === patchedOpen)
+                    Original.prototype.open = originalOpen;
+            });
+        }
         Original.prototype.send = function patchedSend(body) {
-            const bytes = active ? measureBodySize(body) : null;
+            const url = xhrUrls.get(this);
+            const bytes = active && !(url !== undefined && shouldIgnore(url)) ? measureBodySize(body) : null;
             if (bytes !== null && bytes >= minimumBytes && this.upload) {
                 let started = now();
                 const onStart = () => {
@@ -612,7 +720,7 @@ function installUploadInstrumentation(host, options) {
     if (typeof host.fetch === "function") {
         const originalFetch = host.fetch;
         host.fetch = function patchedFetch(input, init) {
-            const bytes = active ? measureBodySize(init?.body) : null;
+            const bytes = active && !shouldIgnore(requestUrl(input)) ? measureBodySize(init?.body) : null;
             if (bytes === null || bytes < minimumBytes) {
                 return originalFetch.call(host, input, init);
             }
@@ -939,6 +1047,7 @@ export class Freeloader {
          */
         this.observed = new Set();
         this.options = { ...DEFAULTS, ...options };
+        this.isIgnored = compileIgnoreList(this.options.ignore);
         this.storage = storage !== undefined ? storage : this.options.persist ? defaultStorage() : null;
         const now = this.now();
         this.state = loadState(this.storage, this.options.storageKey, this.options.maximumAgeMilliseconds, now);
@@ -989,6 +1098,12 @@ export class Freeloader {
                 onSample: (sample) => this.addUploadSample(sample),
                 getRoundTripMilliseconds: () => this.estimate.latency.roundTripMilliseconds,
                 minimumBytes: 4096,
+                shouldIgnore: (url) => {
+                    if (!this.isIgnored(url))
+                        return false;
+                    this.skipped["ignored"] = (this.skipped["ignored"] ?? 0) + 1;
+                    return true;
+                },
             });
         }
     }
@@ -1075,6 +1190,10 @@ export class Freeloader {
      * themselves.
      */
     ingest(entry) {
+        if (this.isIgnored(entry.name)) {
+            this.skipped["ignored"] = (this.skipped["ignored"] ?? 0) + 1;
+            return;
+        }
         if (!this.matchesOrigin(entry.name)) {
             this.skipped["foreign-origin"] = (this.skipped["foreign-origin"] ?? 0) + 1;
             return;

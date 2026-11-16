@@ -411,6 +411,7 @@ freeloader.flush(): void                       // fold buffered entries in now
 | `slowStartCorrection` | `1` | How much of the ramp to subtract, 0–1. |
 | `instrumentUploads` | `true` | Patch `fetch`/`XMLHttpRequest` to time request bodies. |
 | `origins` | every origin | Restrict observation to these origins. |
+| `ignore` | — | URLs to leave out entirely. See [Ignoring URLs](#ignoring-urls). |
 | `onUpdate` | — | Called on every change. |
 | `now`, `timeOrigin` | real clocks | Injectable clocks, for tests. |
 
@@ -431,6 +432,34 @@ the distribution. `peakBitsPerSecond` is the fastest single burst.
 
 `confidence.score` runs 0–1. Treat a figure with low confidence as "at least this fast" rather than as
 a measurement.
+
+### Ignoring URLs
+
+Some traffic should not shape an estimate of ordinary page traffic: an active speed test that
+saturates the link on purpose, a background sync, a huge upload of your own. `ignore` takes a list of
+patterns, and a matching transfer contributes nothing — not throughput, not latency, not the byte
+totals. It is counted as `ignored` in `debug().skipped`. Uploads are matched too.
+
+```ts
+Freeloader.start({
+  ignore: [
+    "/analytics/",                       // substring
+    "*/segments/*.ts",                   // glob: only * is special
+    { exact: "/assets/sink.txt" },       // the whole candidate
+    { includes: "?speedtest=" },
+    { startsWith: "/api/stream/" },
+    { endsWith: ".iso" },
+    { glob: "*/video/*.mp4" },
+    { regex: "probe-\\d+", flags: "i" }, // a regex as a string, for JSON config
+    /\?speedtest=/,                      // or a RegExp
+    (url) => url.length > 2000,          // or your own predicate
+  ],
+});
+```
+
+Each pattern is tried against the URL as the browser reported it, its absolute form, and its path
+with query string — so `{ exact: "/assets/sink.txt" }` matches a request the page made to
+`https://example.com/assets/sink.txt`.
 
 ## Privacy
 

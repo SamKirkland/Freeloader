@@ -81,6 +81,33 @@ export interface NetworkEstimate {
     /** Epoch ms of the most recent sample folded in. */
     updatedAt: number;
 }
+/**
+ * One way of naming a URL that should be left out of the measurement.
+ *
+ * A bare string matches by substring, unless it contains `*`, in which case it
+ * is a glob matched against the whole candidate (`*` stands for any run of
+ * characters; nothing else is special, so a `?` in a query string is just a
+ * `?`). The tagged forms say exactly which comparison is meant, and a RegExp
+ * or a predicate covers whatever the tags do not.
+ *
+ * Patterns are tried against the URL as the browser reported it, its absolute
+ * form, and its path with query string - so `{ exact: "/assets/sink.txt" }`
+ * matches a request the page made to `https://example.com/assets/sink.txt`.
+ */
+export type UrlPattern = string | RegExp | ((url: string) => boolean) | {
+    exact: string;
+} | {
+    includes: string;
+} | {
+    startsWith: string;
+} | {
+    endsWith: string;
+} | {
+    glob: string;
+} | {
+    regex: string;
+    flags?: string;
+};
 export interface FreeloaderOptions {
     /** localStorage key. Default `freeloader`. */
     storageKey?: string;
@@ -112,6 +139,17 @@ export interface FreeloaderOptions {
     instrumentUploads?: boolean;
     /** Only observe these origins. Default: every origin the page already talks to. */
     origins?: string[];
+    /**
+     * URLs to leave out entirely, as substrings, globs, regexes, predicates or
+     * tagged matchers; see `UrlPattern`. Default: nothing is ignored.
+     *
+     * A matching transfer contributes nothing - not throughput, not latency, not
+     * the byte totals - and is counted as `ignored` in `debug().skipped`.
+     * Uploads are matched too, so an active speed test, a background sync or a
+     * large upload of your own can be kept out of a measurement that is meant to
+     * describe ordinary page traffic.
+     */
+    ignore?: UrlPattern[];
     /** Called whenever the estimate changes. */
     onUpdate?: (estimate: NetworkEstimate) => void;
     /** Epoch-millisecond clock. Defaults to `Date.now`; override in tests. */
@@ -201,6 +239,8 @@ export declare class Freeloader {
     private readonly aggregator;
     private readonly listeners;
     private readonly skipped;
+    /** The `ignore` option, compiled once. */
+    private readonly isIgnored;
     /** Latency observations awaiting a contention verdict. */
     private pendingLatency;
     /** Recent body windows, used to decide whether a request had the link to itself. */

@@ -325,6 +325,37 @@ formatBitsPerSecond(null);         // "—"</code></pre>
       </p>
       <pre><code>Timing-Allow-Origin: https://www.example.com</code></pre>
 
+      <h3 id="ignore">Leave some traffic out</h3>
+      <p>
+        Some traffic shouldn't shape an estimate of ordinary page traffic: an active speed test that
+        saturates the link on purpose, a background sync, a huge upload of your own. A transfer
+        matching <code>ignore</code> contributes nothing — not throughput, not latency, not the byte
+        totals — and is counted as <code>ignored</code> in <code>debug().skipped</code>. Uploads are
+        matched too.
+      </p>
+      <pre><code>Freeloader.start({
+  ignore: [
+    "/analytics/",                       // substring
+    "*/segments/*.ts",                   // glob: only * is special
+    { exact: "/assets/sink.txt" },       // the whole candidate
+    { includes: "?speedtest=" },
+    { startsWith: "/api/stream/" },
+    { endsWith: ".iso" },
+    { glob: "*/video/*.mp4" },
+    { regex: "probe-\\d+", flags: "i" }, // a regex as a string, for JSON config
+    /\?speedtest=/,                      // or a RegExp
+    (url) =&gt; url.length &gt; 2000,          // or your own predicate
+  ],
+});</code></pre>
+      <p>
+        Each pattern is tried against the URL as the browser reported it, its absolute form, and its
+        path with query string, so <code>{ exact: "/assets/sink.txt" }</code> matches a request the
+        page made to <code>https://example.com/assets/sink.txt</code>. This demo uses the option
+        itself: the <a href="speedtest.html">speed test</a> busts every download with
+        <code>?speedtest=</code> and uploads to one fixed path, and both are ignored so the active
+        test never feeds the passive estimate in the bar above.
+      </p>
+
       <h3>Leave <code>fetch</code> and <code>XMLHttpRequest</code> alone</h3>
       <pre><code>Freeloader.start({ instrumentUploads: false });</code></pre>
       <p>
@@ -429,6 +460,13 @@ formatBitsPerSecond(null);         // "—"</code></pre>
               <td>Only observe transfers from these origins, for example <code>["https://cdn.example.com"]</code>.</td>
             </tr>
             <tr>
+              <td><code>ignore</code></td><td>—</td>
+              <td>
+                URLs to leave out entirely, as substrings, globs, regexes, predicates or tagged
+                matchers. See <a href="#ignore">leave some traffic out</a>.
+              </td>
+            </tr>
+            <tr>
               <td><code>onUpdate</code></td><td>—</td>
               <td>Called with the new estimate on every change. Works like <code>subscribe()</code>, set at construction time.</td>
             </tr>
@@ -503,6 +541,11 @@ formatBitsPerSecond(null);         // "—"</code></pre>
               <td><code>foreign-origin</code></td>
               <td>The origin isn't in your <code>origins</code> list.</td>
               <td>Add it to the list if you want it counted.</td>
+            </tr>
+            <tr>
+              <td><code>ignored</code></td>
+              <td>The URL matched one of your <code>ignore</code> patterns.</td>
+              <td>Nothing, if that's what you asked for. Otherwise loosen the pattern.</td>
             </tr>
           </tbody>
         </table>
